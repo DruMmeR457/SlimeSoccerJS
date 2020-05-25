@@ -18,11 +18,11 @@ var redSlime, blueSlime, soccerBall;
 function startGame() 
 {
     myGameArea.start();
-    redSlime = new player(30, 30, "red", 448, 0);
-	blueSlime = new player(30, 30, "blue", 2, 0);
+    redSlime = new player(15, "red", 448, 0);
+	blueSlime = new player(15, "blue", 32, 0);
 	//redGoal = new player(60, 10, "orange", 0, 210);
 	//blueGoal = new player(60, 10, "green", 420, 210);
-	soccerBall = new ball(15, 15, "yellow", 150, 150, 0.9)
+	soccerBall = new ball(5, "yellow", 150, 150, 0.9)
 }
 
 var myGameArea = 
@@ -52,10 +52,9 @@ var myGameArea =
 	}
 }
 
-function player(width, height, color, x, y) 
+function player(radius, color, x, y) 
 {
-    this.width = width;		//entity width
-    this.height = height;	//entity height
+    this.radius = radius;	//size of player
     this.x = x;				//x-coordinate
     this.y = y;				//y-coordinate
 	this.speedX = 0;		//speed travelling horizontally	
@@ -79,7 +78,7 @@ function player(width, height, color, x, y)
 	}
 	this.hitBottom = function() //defines bottom of screen behavior
 	{
-		var bottomScreen = myGameArea.canvas.height - this.height;
+		var bottomScreen = myGameArea.canvas.height;
 		if (this.y > bottomScreen) 
 		{
 			this.y = bottomScreen;
@@ -87,10 +86,9 @@ function player(width, height, color, x, y)
 	}
 }
 
-function ball(width, height, color, x, y, bounce) 
+function ball(radius, color, x, y, bounce) 
 {
-    this.width = width;		//entity width
-    this.height = height;	//entity height
+    this.radius = radius;	//size of ball
     this.x = x;				//x-coordinate
     this.y = y;				//y-coordinate
 	this.speedX = 0;		//speed travelling horizontally
@@ -115,7 +113,7 @@ function ball(width, height, color, x, y, bounce)
 	}
 	this.hitBottom = function()	//defines bottom of screen behavior
 	{
-		var bottomScreen = myGameArea.canvas.height - this.height;
+		var bottomScreen = myGameArea.canvas.height;
 		if (this.y > bottomScreen) 
 		{
 			this.y = bottomScreen;
