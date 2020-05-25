@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<style>
+canvas 
+{
+    border:1px solid #d3d3d3;
+    background-color: #f1f1f1;
+}
+</style>
+</head>
+<body onload="startGame()">
+<script>
+
+var redSlime, blueSlime, soccerBall;
+
+function startGame() 
+{
+    myGameArea.start();
+    redSlime = new player(30, 30, "red", 448, 0);
+	blueSlime = new player(30, 30, "blue", 2, 0);
+	//redGoal = new player(60, 10, "orange", 0, 210);
+	//blueGoal = new player(60, 10, "green", 420, 210);
+	soccerBall = new ball(15, 15, "yellow", 150, 150, 0.9)
+}
+
+var myGameArea = 
+{
+    canvas : document.createElement("canvas"),
+    start : function() 
+	{
+        this.canvas.width = 480;
+        this.canvas.height = 270;
+        this.context = this.canvas.getContext("2d");
+        document.body.insertBefore(this.canvas, document.body.childNodes[0]);
+		this.interval = setInterval(updateGameArea, 17);
+		window.addEventListener('keydown', function (e) 
+		{
+			myGameArea.keys = (myGameArea.keys || []);
+			myGameArea.keys[e.keyCode] = true;
+		})
+		window.addEventListener('keyup', function (e) 
+		{
+			myGameArea.keys[e.keyCode] = false;
+		})
+    },
+	
+	clear : function() 
+	{
+		this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+	}
+}
+
+function player(width, height, color, x, y) 
+{
+    this.width = width;		//entity width
+    this.height = height;	//entity height
+    this.x = x;				//x-coordinate
+    this.y = y;				//y-coordinate
+	this.speedX = 0;		//speed travelling horizontally	
+	this.speedY = 0;		//speed travelling vertically
+	this.gravity = 0.08;
+	this.gravitySpeed = 0;	//how gravity affects the y-coord
+	this.update = function()	//puts object on canvas
+	{
+		ctx = myGameArea.context;
+		ctx.fillStyle = color;
+		ctx.beginPath();
+		ctx.arc(this.x, this.y, 25, 0, Math.PI, true);
+		ctx.fill();
+	}
+	this.newPos = function()    //updates x and y-coords for object
+	{
+		this.gravitySpeed += this.gravity;
+		this.x += this.speedX;
+		this.y += this.speedY + this.gravitySpeed;
+		this.hitBottom();
+	}
+	this.hitBottom = function() //defines bottom of screen behavior
+	{
+		var bottomScreen = myGameArea.canvas.height - this.height;
+		if (this.y > bottomScreen) 
+		{
+			this.y = bottomScreen;
+		}
+	}
+}
+
+function ball(width, height, color, x, y, bounce) 
+{
+    this.width = width;		//entity width
+    this.height = height;	//entity height
+    this.x = x;				//x-coordinate
+    this.y = y;				//y-coordinate
+	this.speedX = 0;		//speed travelling horizontally
+	this.speedY = 0;		//speed travelling vertically
+	this.gravity = 0.05;	
+	this.gravitySpeed = 0;	//how gravity affects the y-coord
+	this.bounce = bounce;	//how high the ball bounces
+	this.update = function()	//puts object on canvas
+	{
+		ctx = myGameArea.context;
+		ctx.fillStyle = color;
+		ctx.beginPath();
+		ctx.arc(this.x, this.y, 5, 0, 2 * Math.PI);
+		ctx.fill();
+	}
+	this.newPos = function()	//updates x and y-coords for object
+	{
+		this.gravitySpeed += this.gravity;
+		this.x += this.speedX;
+		this.y += this.speedY + this.gravitySpeed;
+		this.hitBottom();
+	}
+	this.hitBottom = function()	//defines bottom of screen behavior
+	{
+		var bottomScreen = myGameArea.canvas.height - this.height;
+		if (this.y > bottomScreen) 
+		{
+			this.y = bottomScreen;
+			this.gravitySpeed = -(this.gravitySpeed * this.bounce);
+		}
+	}
+}
+
+function redMoveLeft() 
+{
+	redSlime.speedX -= 1;		//red movement speed left
+}
+
+function redMoveRight() 
+{
+	redSlime.speedX += 1;		//red movement speed right
+}
+
+function redJump()
+{
+	if (redSlime.gravitySpeed > 3) {redSlime.gravitySpeed = -3; } //these need to match
+}
+
+function blueMoveLeft() 
+{
+	blueSlime.speedX -= 1;		//blue movement speed left
+}
+
+function blueMoveRight() 
+{
+	blueSlime.speedX += 1;		//blue movement speed right
+}
+
+function blueJump()
+{
+	if (blueSlime.gravitySpeed > 3) {blueSlime.gravitySpeed = -3; } //these need to match
+}
+
+function redStopMove()
+{
+	redSlime.speedX = 0;
+	redSlime.speedY = 0;
+}
+
+function blueStopMove()
+{
+	blueSlime.speedX = 0;
+	blueSlime.speedY = 0;
+}
+
+function updateGameArea() {
+  myGameArea.clear();		//clear game area
+  redStopMove();
+  blueStopMove();
+  if (myGameArea.keys && myGameArea.keys[37]) {redMoveLeft(); }  	//left
+  if (myGameArea.keys && myGameArea.keys[39]) {redMoveRight(); }	//right
+  if (myGameArea.keys && myGameArea.keys[38]) {redJump(); }  		//jump
+  if (myGameArea.keys && myGameArea.keys[65]) {blueMoveLeft(); } 	//left
+  if (myGameArea.keys && myGameArea.keys[68]) {blueMoveRight(); }	//right
+  if (myGameArea.keys && myGameArea.keys[87]) {blueJump(); } 		//jump
+  redSlime.newPos();		//update blue's location
+  blueSlime.newPos();		//update blue's location
+  soccerBall.newPos();
+  redSlime.update();		//print blue's new location
+  blueSlime.update();		//print blue's new location
+  soccerBall.update();
+}
+
+</script>
+
+</body>
+</html>
