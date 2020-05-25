@@ -113,7 +113,7 @@ function ball(radius, color, x, y, bounce)
 	}
 	this.hitBottom = function()	//defines bottom of screen behavior
 	{
-		var bottomScreen = myGameArea.canvas.height;
+		var bottomScreen = myGameArea.canvas.height - this.radius;
 		if (this.y > bottomScreen) 
 		{
 			this.y = bottomScreen;
