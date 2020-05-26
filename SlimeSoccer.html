@@ -57,31 +57,32 @@ function player(radius, color, x, y)
     this.radius = radius;	//size of player
     this.x = x;				//x-coordinate
     this.y = y;				//y-coordinate
+	this.radius = 25;		//size of the slime player
 	this.speedX = 0;		//speed travelling horizontally	
 	this.speedY = 0;		//speed travelling vertically
 	this.gravity = 0.08;
-	this.gravitySpeed = 0;	//how gravity affects the y-coord
 	this.update = function()	//puts object on canvas
 	{
 		ctx = myGameArea.context;
 		ctx.fillStyle = color;
 		ctx.beginPath();
-		ctx.arc(this.x, this.y, 25, 0, Math.PI, true);
+		ctx.arc(this.x, this.y, this.radius, 0, Math.PI, true);
 		ctx.fill();
 	}
-	this.newPos = function()    //updates x and y-coords for object
+	this.newPos = function()	//updates x and y-coords for object
 	{
-		this.gravitySpeed += this.gravity;
+		this.speedY += this.gravity;
 		this.x += this.speedX;
-		this.y += this.speedY + this.gravitySpeed;
+		this.y += this.speedY;
 		this.hitBottom();
 	}
-	this.hitBottom = function() //defines bottom of screen behavior
+	this.hitBottom = function()	//defines bottom of screen behavior
 	{
 		var bottomScreen = myGameArea.canvas.height;
 		if (this.y > bottomScreen) 
 		{
 			this.y = bottomScreen;
+			this.speedY = 0;
 		}
 	}
 }
@@ -91,24 +92,24 @@ function ball(radius, color, x, y, bounce)
     this.radius = radius;	//size of ball
     this.x = x;				//x-coordinate
     this.y = y;				//y-coordinate
+	this.radius = 5;		//size of the ball
 	this.speedX = 0;		//speed travelling horizontally
 	this.speedY = 0;		//speed travelling vertically
 	this.gravity = 0.05;	
-	this.gravitySpeed = 0;	//how gravity affects the y-coord
 	this.bounce = bounce;	//how high the ball bounces
 	this.update = function()	//puts object on canvas
 	{
 		ctx = myGameArea.context;
 		ctx.fillStyle = color;
 		ctx.beginPath();
-		ctx.arc(this.x, this.y, 5, 0, 2 * Math.PI);
+		ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
 		ctx.fill();
 	}
 	this.newPos = function()	//updates x and y-coords for object
 	{
-		this.gravitySpeed += this.gravity;
+		this.speedY += this.gravity;
 		this.x += this.speedX;
-		this.y += this.speedY + this.gravitySpeed;
+		this.y += this.speedY;
 		this.hitBottom();
 	}
 	this.hitBottom = function()	//defines bottom of screen behavior
@@ -117,7 +118,7 @@ function ball(radius, color, x, y, bounce)
 		if (this.y > bottomScreen) 
 		{
 			this.y = bottomScreen;
-			this.gravitySpeed = -(this.gravitySpeed * this.bounce);
+			this.speedY = -(this.speedY * this.bounce);
 		}
 	}
 }
@@ -134,7 +135,10 @@ function redMoveRight()
 
 function redJump()
 {
-	if (redSlime.gravitySpeed > 3) {redSlime.gravitySpeed = -3; } //these need to match
+	var bottomScreen = myGameArea.canvas.height;
+	if (redSlime.y == bottomScreen) {
+		redSlime.speedY -= 3;
+	}
 }
 
 function blueMoveLeft() 
@@ -149,23 +153,23 @@ function blueMoveRight()
 
 function blueJump()
 {
-	if (blueSlime.gravitySpeed > 3) {blueSlime.gravitySpeed = -3; } //these need to match
+	var bottomScreen = myGameArea.canvas.height;
+	if (blueSlime.y == bottomScreen) {
+		blueSlime.speedY -= 3;
+	}
 }
 
 function redStopMove()
 {
 	redSlime.speedX = 0;
-	redSlime.speedY = 0;
 }
 
 function blueStopMove()
 {
 	blueSlime.speedX = 0;
-	blueSlime.speedY = 0;
 }
 
 function updateGameArea() {
-  myGameArea.clear();		//clear game area
   redStopMove();
   blueStopMove();
   if (myGameArea.keys && myGameArea.keys[37]) {redMoveLeft(); }  	//left
@@ -177,9 +181,109 @@ function updateGameArea() {
   redSlime.newPos();		//update blue's location
   blueSlime.newPos();		//update blue's location
   soccerBall.newPos();
+  collision(redSlime, soccerBall);
+  collision(blueSlime, soccerBall);
+  myGameArea.clear();		//clear game area
   redSlime.update();		//print blue's new location
   blueSlime.update();		//print blue's new location
   soccerBall.update();
+}
+
+/**
+ * Calculate collisions between a slime player and the soccer ball
+ * @param slime The player object
+ * @param soccerBall The ball object
+ */
+function collision(slime, soccerBall) {
+  // Check if the slime player and soccerBall are touching or overlapping
+  var distanceBetweenObjects = distantBetween(slime, soccerBall);
+  var overlap = (slime.radius + soccerBall.radius) - distanceBetweenObjects;
+  if (overlap >= 0) {
+	
+	var collisionVectorX = slime.x - soccerBall.x;
+	var collisionVectorY = slime.y - soccerBall.y;
+	line(soccerBall.x, soccerBall.y, collisionVectorX + soccerBall.x, collisionVectorY + soccerBall.y, '#000');
+
+	//Normalize the vector.
+	//These numbers tell us the direction of the collision
+	var normalizedCollisionVectorX = collisionVectorX / distanceBetweenObjects;
+	var normalizedCollisionVectorY = collisionVectorY / distanceBetweenObjects;
+
+	//Find the side that the collision is occurring on
+	soccerBall.x < slime.x ? xSide = 1 : xSide = -1;
+	soccerBall.y > slime.y ? ySide = 1 : ySide = -1;
+
+	//Move the soccer ball out of the collision by multiplying
+	//the overlap with the normalized vector and adding it to
+	//the circles' positions
+	soccerBall.x = soccerBall.x + (normalizedCollisionVectorX * overlap * xSide);
+	soccerBall.y = soccerBall.y + (normalizedCollisionVectorY * overlap * ySide);
+	
+	//1. Calculate the collision surface's properties
+
+	//Find the surface vector's normal (perpendicular line)
+	surfaceVectorsNormalX = collisionVectorY;
+	surfaceVectorsNormalY = -collisionVectorX;
+	line(
+		soccerBall.x - surfaceVectorsNormalX,
+		soccerBall.y - surfaceVectorsNormalY,
+		surfaceVectorsNormalX + soccerBall.x,
+		surfaceVectorsNormalY + soccerBall.y,
+		'#0f0');
+
+	//2. Bounce the soccer ball off the surface vector
+
+	//Find the dot product between the soccer ball and the surface vector
+	var dp1 = soccerBall.speedX * normalizedCollisionVectorX + soccerBall.speedY * surfaceVectorsNormalY;
+
+	//Project the soccer ball's speed onto the collision surface
+    //bounceProjectionX = dp1 * normalizedCollisionVectorX;
+    //bounceProjectionY = dp1 * normalizedCollisionVectorY;
+
+	//Find the dot product of the soccer ball's speed and the surface's normal (surfaceVectorsNormalX and surfaceVectorsNormalY)
+	var dp2 = 
+	    soccerBall.speedX * (surfaceVectorsNormalX / distanceBetweenObjects) + 
+		soccerBall.speedY * (surfaceVectorsNormalY / distanceBetweenObjects);
+	//Find the dot product between the slime player and the surface
+	var dp3 = 
+	    slime.speedX * normalizedCollisionVectorX + 
+	    slime.speedY * normalizedCollisionVectorY;
+
+	//4. Calculate the bounce vectors
+	//Project the soccer ball's speed onto the surface's normal
+	// c1.bounce.x = p1B.x + p2A.x;
+	var soccerBallBounceX = (dp2 * (surfaceVectorsNormalX / distanceBetweenObjects)) + (dp3 * normalizedCollisionVectorX);
+	// c1.bounce.y = p1B.y + p2A.y;
+	var soccerBallBounceY = (dp2 * (surfaceVectorsNormalY / distanceBetweenObjects)) + (dp3 * normalizedCollisionVectorY);
+
+	//Add the bounce vector to the soccer ball's speed
+	soccerBall.speedX = soccerBallBounceX;
+	soccerBall.speedY = soccerBallBounceY;
+    
+	// We don't change the player's position because the soccer ball should bounce off the player.
+  }
+}
+
+function line(x1, y1, x2, y2, color) {
+ctx = myGameArea.context;
+ctx.strokeStyle = color;
+ctx.beginPath();
+ctx.moveTo(x1, y1);
+ctx.lineTo(x2, y2);
+ctx.closePath();
+ctx.stroke();
+}
+
+/**
+ * Calculate the distance between a slime player and the soccer ball
+ * @param slime The player object
+ * @param soccerBall The ball object
+ */
+function distantBetween(slime, soccerBall) {
+	return Math.sqrt(
+	    Math.pow(slime.x - soccerBall.x, 2) + 
+	    Math.pow(slime.y - soccerBall.y, 2)
+	);
 }
 
 </script>
