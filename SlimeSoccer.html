@@ -273,14 +273,11 @@ function resetGameArea(slime1, slime2, ball)
  */
 function collision(slime, soccerBall) {
   // Check if the slime player and soccerBall are touching or overlapping
-  //s.magnitude
   var distanceBetweenObjects = distantBetween(slime, soccerBall);
   var overlap = (slime.radius + soccerBall.radius) - distanceBetweenObjects;
   if (overlap >= 0) {
   
-	//s.vx
 	var collisionVectorX = slime.x - soccerBall.x;
-	//s.vy
 	var collisionVectorY = slime.y - soccerBall.y;
 	line(
 	    soccerBall.x,
@@ -291,9 +288,7 @@ function collision(slime, soccerBall) {
 
 	//Normalize the vector.
 	//These numbers tell us the direction of the collision
-	//s.dx
 	var normalizedCollisionVectorX = collisionVectorX / distanceBetweenObjects;
-	//s.dy
 	var normalizedCollisionVectorY = collisionVectorY / distanceBetweenObjects;
 
 
@@ -311,59 +306,33 @@ function collision(slime, soccerBall) {
 	
 	//1. Calculate the collision surface's properties (perpendicular line)
 
-	//Find the surface vector's left normal 
-	//s.lx
-	surfaceVectorX = collisionVectorY;
-	//s.ly
-	surfaceVectorY = -collisionVectorX;
+	//Find the surface vector
+	var surfaceVectorX = collisionVectorY;
+	var surfaceVectorY = -collisionVectorX;
 	line(
 		soccerBall.x - surfaceVectorX,
 		soccerBall.y - surfaceVectorY,
 		soccerBall.x + surfaceVectorX,
 		soccerBall.y + surfaceVectorY,
 		'green');
+	//Normalize the surface vector
+	var surfaceVectorLength = Math.sqrt(Math.pow(surfaceVectorX, 2) + Math.pow(surfaceVectorY, 2));
+	var surfaceVectorNormalizedX = surfaceVectorX / surfaceVectorLength;
+	var surfaceVectorNormalizedY = surfaceVectorY / surfaceVectorLength;
 
 	//2. Bounce the soccer ball off the surface vector
 
-	//Find the dot product between the soccer ball's speed and the collision vector
-	var dp1 = soccerBall.speedX * normalizedCollisionVectorX + soccerBall.speedY * normalizedCollisionVectorY;
-	////Find the dot product between the soccer ball's speed and the surface vector
-	//var dp1 = soccerBall.speedX * surfaceVectorX + soccerBall.speedY * surfaceVectorY;
-
-	//Project the soccer ball's speed onto the collision surface
-    //bounceProjectionX = dp1 * normalizedCollisionVectorX;
-    //bounceProjectionY = dp1 * normalizedCollisionVectorY;
-
-	//Find the dot product of the soccer ball's speed and the surface's normal (surfaceVectorX and surfaceVectorY)
-	var dp2 = 
-	    soccerBall.speedX * (surfaceVectorX / distanceBetweenObjects) + 
-		soccerBall.speedY * (surfaceVectorY / distanceBetweenObjects);
+	//Find the dot product between the soccer ball's speed and the normalized surface vector
+	var lengthOfVelocityParallelToSurface = soccerBall.speedX * surfaceVectorNormalizedX + soccerBall.speedY * surfaceVectorNormalizedY;
 	
-	//Find the dot product between the slime player and the collision vector
-	var dp3 = 
-	    slime.speedX * normalizedCollisionVectorX + 
-	    slime.speedY * normalizedCollisionVectorY;
-	////Find the dot product between the slime player and the surface
-	//var dp3 = 
-	//    slime.speedX * surfaceVectorX + 
-	//    slime.speedY * surfaceVectorY;
-
-	//4. Calculate the bounce vectors
-		
-	//Project the soccer ball's speed onto the surface's normal
-	var p1Bx = dp2 * (surfaceVectorX / distanceBetweenObjects);
-	var p1By = dp2 * (surfaceVectorY / distanceBetweenObjects);
-	//Project the slime player's velocity onto the collision surface
-	var p2Ax = dp3 * normalizedCollisionVectorX;
-	var p2Ay = dp3 * normalizedCollisionVectorY;
-	////Project the slime player's velocity onto the collision surface
-	//var p2Ax = dp3 * surfaceVectorX;
-	//var p2Ay = dp3 * surfaceVectorY;
+	var velocityVectorOnSurfaceX = surfaceVectorNormalizedX * lengthOfVelocityParallelToSurface;
+	var velocityVectorOnSurfaceY = surfaceVectorNormalizedY * lengthOfVelocityParallelToSurface;
 	
-	//c1.bounce.x = p1B.x + p2A.x;
-	var soccerBallBounceX = p1Bx + p2Ax;
-	// c1.bounce.y = p1B.y + p2A.y;
-	var soccerBallBounceY = p1By + p2Ay;
+	var velocityVectorPerpendicularToSurfaceX = soccerBall.speedX - velocityVectorOnSurfaceX;
+	var velocityVectorPerpendicularToSurfaceY = soccerBall.speedY - velocityVectorOnSurfaceY;
+	
+	var soccerBallBounceX = soccerBall.speedX - (2 * velocityVectorPerpendicularToSurfaceX);
+	var soccerBallBounceY = soccerBall.speedY - (2 * velocityVectorPerpendicularToSurfaceY);
 	line(
 		soccerBall.x,
 		soccerBall.y,
