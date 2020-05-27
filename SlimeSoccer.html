@@ -279,7 +279,12 @@ function collision(slime, soccerBall) {
 	
 	var collisionVectorX = slime.x - soccerBall.x;
 	var collisionVectorY = slime.y - soccerBall.y;
-	line(soccerBall.x, soccerBall.y, collisionVectorX + soccerBall.x, collisionVectorY + soccerBall.y, '#000');
+	line(
+	    soccerBall.x,
+		soccerBall.y,
+		collisionVectorX + soccerBall.x,
+		collisionVectorY + soccerBall.y,
+		'black');
 
 	//Normalize the vector.
 	//These numbers tell us the direction of the collision
@@ -287,14 +292,20 @@ function collision(slime, soccerBall) {
 	var normalizedCollisionVectorY = collisionVectorY / distanceBetweenObjects;
 
 	//Find the side that the collision is occurring on
-	soccerBall.x < slime.x ? xSide = 1 : xSide = -1;
-	soccerBall.y > slime.y ? ySide = 1 : ySide = -1;
+	soccerBall.x > slime.x ? xSide = -1 : xSide = -1;
+	soccerBall.y > slime.y ? ySide = -1 : ySide = -1;
 
 	//Move the soccer ball out of the collision by multiplying
 	//the overlap with the normalized vector and adding it to
-	//the circles' positions
-	soccerBall.x = soccerBall.x + (normalizedCollisionVectorX * overlap * xSide);
-	soccerBall.y = soccerBall.y + (normalizedCollisionVectorY * overlap * ySide);
+	//the soccer ball's position
+	line(
+		soccerBall.x,
+		soccerBall.y,
+		soccerBall.x + (normalizedCollisionVectorX * overlap * xSide * 10),
+		soccerBall.y + (normalizedCollisionVectorY * overlap * ySide * 10),
+		'cyan');
+	soccerBall.x = soccerBall.x + (normalizedCollisionVectorX * overlap * -1);
+	soccerBall.y = soccerBall.y + (normalizedCollisionVectorY * overlap * -1);
 	
 	//1. Calculate the collision surface's properties
 
@@ -304,14 +315,15 @@ function collision(slime, soccerBall) {
 	line(
 		soccerBall.x - surfaceVectorsNormalX,
 		soccerBall.y - surfaceVectorsNormalY,
-		surfaceVectorsNormalX + soccerBall.x,
-		surfaceVectorsNormalY + soccerBall.y,
-		'#0f0');
+		soccerBall.x + surfaceVectorsNormalX,
+		soccerBall.y + surfaceVectorsNormalY,
+		'green');
 
 	//2. Bounce the soccer ball off the surface vector
 
-	//Find the dot product between the soccer ball and the surface vector
-	var dp1 = soccerBall.speedX * normalizedCollisionVectorX + soccerBall.speedY * surfaceVectorsNormalY;
+	//Find the dot product between the soccer ball's speed and the surface vector
+	//var dp1 = soccerBall.speedX * normalizedCollisionVectorX + soccerBall.speedY * normalizedCollisionVectorY;
+	var dp1 = soccerBall.speedX * surfaceVectorsNormalX + soccerBall.speedY * surfaceVectorsNormalY;
 
 	//Project the soccer ball's speed onto the collision surface
     //bounceProjectionX = dp1 * normalizedCollisionVectorX;
@@ -328,10 +340,21 @@ function collision(slime, soccerBall) {
 
 	//4. Calculate the bounce vectors
 	//Project the soccer ball's speed onto the surface's normal
-	// c1.bounce.x = p1B.x + p2A.x;
-	var soccerBallBounceX = (dp2 * (surfaceVectorsNormalX / distanceBetweenObjects)) + (dp3 * normalizedCollisionVectorX);
+	// c1.bounce.x        =                                p1B.x                    +              p2A.x;
+	var p1Bx = dp2 * (surfaceVectorsNormalX / distanceBetweenObjects);
+	var p1By = dp2 * (surfaceVectorsNormalY / distanceBetweenObjects);
+	var p2Ax = dp3 * normalizedCollisionVectorX;
+	var p2Ay = dp3 * normalizedCollisionVectorY;
+	
+	var soccerBallBounceX = p1Bx + p2Ax;
 	// c1.bounce.y = p1B.y + p2A.y;
-	var soccerBallBounceY = (dp2 * (surfaceVectorsNormalY / distanceBetweenObjects)) + (dp3 * normalizedCollisionVectorY);
+	var soccerBallBounceY = p1By + p2Ay;
+	line(
+		soccerBall.x,
+		soccerBall.y,
+		soccerBall.x + soccerBallBounceX,
+		soccerBall.y + soccerBallBounceY,
+		'magenta');
 
 	//Add the bounce vector to the soccer ball's speed
 	soccerBall.speedX = soccerBallBounceX;
