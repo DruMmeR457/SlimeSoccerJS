@@ -15,7 +15,7 @@ canvas
 
 var redSlime, blueSlime, soccerBall, leftScore = 0, rightScore = 0, 
 	leftInitX = 90, leftInitY = 0, rightInitX = 390, rightInitY = 0,
-	ballInitX = 240, ballInitY = 150, timeout = 0;
+	ballInitX = 240, ballInitY = 150, leftTimeout = 0, rightTimeout = 0;
 
 function startGame() 
 {
@@ -387,40 +387,40 @@ function goalTendingLeft(slime, goal)
 {
 	if (slime.x - slime.radius < goal.width)
 	{
-		timeout++;
-		if(timeout >= 60)
+		leftTimeout++;
+		if (leftTimeout >= 60)
 		{
 			//add score
 			rightScore++;
 			//reset
 			resetGameArea(redSlime, blueSlime, soccerBall);
-			timeout = 0;
+			leftTimeout = 0;
 		}
 	}
 	else
 	{
-		timeout = 0;
+		leftTimeout = 0;
 	}
 }
 
 function goalTendingRight(slime, goal)
 {
-	var RightScreen = myGameArea.canvas.width;
+	var rightScreen = myGameArea.canvas.width;
 	if (slime.x + slime.radius > rightScreen - goal.width)
 	{
-		timeout++;
-		if(timeout >= 60)
+		rightTimeout++;
+		if (rightTimeout >= 60)
 		{
 			//add score
 			leftScore++;
 			//reset
 			resetGameArea(redSlime, blueSlime, soccerBall);
-			timeout = 0;
+			rightTimeout = 0;
 		}
 	}
 	else
 	{
-		timeout = 0;
+		rightTimeout = 0;
 	}
 }
 
