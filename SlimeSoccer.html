@@ -388,6 +388,14 @@ ctx.lineTo(x2, y2);
 ctx.closePath();
 ctx.stroke();
 }
+function dot(x, y, color) {
+ctx = myGameArea.context;
+ctx.strokeStyle = color;
+ctx.beginPath();
+ctx.arc(x, y, 4, 0, Math.PI * 2, true);
+ctx.closePath();
+ctx.stroke();
+}
 
 /**
  * Calculate the distance between a slime player and the soccer ball
