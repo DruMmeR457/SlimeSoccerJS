@@ -516,15 +516,20 @@ function hitCrossbar(ball, goal)
 		if (ball.y + ball.radius > bottomScreen - goal.height &&	//if on top of goal
 			ball.x <= goal.width)	//if no corner hit detection, ball.x - ball.radius < goal.width
 		{
-			ball.speedY = -ball.speedY;	//ball.speedY = -ball.speedY * ball.bounce;
+			if (ball.speedY > 0)
+			{
+				ball.speedY = -ball.speedY;	//ball.speedY = -ball.speedY * ball.bounce;
+			}
 		}
-		/*
+
 		if (ball.x - ball.radius < goal.width && ball.x + ball.radius > goal.width &&	//if a corner hit
 			ball.y - ball.radius < bottomScreen - goal.height && ball.y + ball.radius > bottomScreen - goal.height)
 		{
-			ball.speedX = -ball.speedX;	//ball.speedX = -ball.speedX * ball.bounce;
-		}	
-	*/		
+			if (ball.speedX < 0)
+			{
+				ball.speedX = -ball.speedX;	//ball.speedX = -ball.speedX * ball.bounce;
+			}
+		}		
 	}
 	else
 	{
@@ -532,15 +537,19 @@ function hitCrossbar(ball, goal)
 		if ((ball.y + ball.radius > bottomScreen - goal.height) &&	//if on top of goal
 			(ball.x >= rightScreen - goal.width)) //if no corner hit detection, ball.x + ball.radius > rightScreen - goal.width
 		{
-			ball.speedY = -ball.speedY;	//ball.speedY = -ball.speedY * ball.bounce;
+			if (ball.speedY > 0)
+			{
+				ball.speedY = -ball.speedY;	//ball.speedY = -ball.speedY * ball.bounce;
+			}
 		}
-		/*
 		if (ball.x - ball.radius < rightScreen - goal.width && ball.x + ball.radius > rightScreen - goal.width &&	//if a corner hit
 			ball.y - ball.radius < bottomScreen - goal.height && ball.y + ball.radius > bottomScreen - goal.height)
 		{
-			ball.speedX = -ball.speedX;	//ball.speedX = -ball.speedX * ball.bounce;
+			if (ball.speedX > 0)
+			{
+				ball.speedX = -ball.speedX;	//ball.speedX = -ball.speedX * ball.bounce;
+			}
 		}
-		*/
 	}
 }
 
