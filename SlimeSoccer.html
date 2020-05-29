@@ -111,7 +111,6 @@ function ball(radius, color, x, y, bounce)
     this.radius = radius;	//size of ball
     this.x = x;				//x-coordinate
     this.y = y;				//y-coordinate
-	this.radius = 5;		//size of the ball
 	this.speedX = 0;		//speed travelling horizontally
 	this.speedY = 0;		//speed travelling vertically
 	this.gravity = 0.10;	
@@ -165,6 +164,7 @@ function goal(width, height, color, isRed)
 {
     this.width = width;
 	this.height = height;
+	this.isLeft = isRed;
 	this.update = function()	//puts object on canvas
 	{
 		ctx = myGameArea.context;
@@ -173,11 +173,15 @@ function goal(width, height, color, isRed)
 		if (isRed)
 		{
 			ctx.fillRect(0, bottomScreen - height, width, 1);
+			ctx.fillRect(width - 1, bottomScreen - height, 1, height);
+			//ctx.strokeRect(0, bottomScreen - height, width, height);
 		}
 		else
 		{
 			var rightScreen = myGameArea.canvas.width;
 			ctx.fillRect(rightScreen - width, bottomScreen - height, width, 1);
+			ctx.fillRect(rightScreen - width - 1, bottomScreen - height, 1, height);
+			//ctx.strokeRect(rightScreen - width, bottomScreen - height, width, height);
 		}
 	}
 }
@@ -242,6 +246,8 @@ function updateGameArea() {
   soccerBall.newPos();
   collision(redSlime, soccerBall);
   collision(blueSlime, soccerBall);
+  hitCrossbar(soccerBall, redGoal);
+  hitCrossbar(soccerBall, blueGoal);
   myGameArea.clear();		//clear game area
   redSlime.update();		//print blue's new location
   blueSlime.update();		//print blue's new location
@@ -258,8 +264,12 @@ function resetGameArea(slime1, slime2, ball)
 {
 	slime1.x = leftInitX;
 	slime1.y = leftInitY;
+	slime1.speedX = 0;
+	slime1.speedY = 0;
 	slime2.x = rightInitX;
 	slime2.y = leftInitY;
+	slime2.speedX = 0;
+	slime2.speedY = 0;
 	ball.x = ballInitX;
 	ball.y = ballInitY;
 	ball.speedX = 0;
@@ -428,7 +438,9 @@ function distantBetween(slime, soccerBall) {
 function scored(ball, leftGoal, rightGoal)
 {
 	var rightScreen = myGameArea.canvas.width;
-	if (ball.x + ball.radius < leftGoal.width || ball.x - ball.radius > rightScreen - rightGoal.width)
+	var bottomScreen = myGameArea.canvas.height;
+	if ((ball.x + ball.radius < leftGoal.width && ball.y - ball.radius > bottomScreen - leftGoal.height) ||
+		(ball.x - ball.radius > rightScreen - rightGoal.width && ball.y - ball.radius > bottomScreen - rightGoal.height))
 	{
 		if (ball.x > rightScreen / 2)
 		{
@@ -463,6 +475,11 @@ function goalTendingLeft(slime, goal)
 	{
 		leftTimeout = 0;
 	}
+  
+	var ctx = myGameArea.context;
+	var middleScreen = myGameArea.canvas.width / 2;
+	ctx.fillStyle = "black";
+	ctx.fillRect(0, 2, middleScreen * ((59 - leftTimeout) / 59), 2);	//one less than timeout so last "tick" is reached
 }
 
 function goalTendingRight(slime, goal)
@@ -483,6 +500,56 @@ function goalTendingRight(slime, goal)
 	else
 	{
 		rightTimeout = 0;
+	}
+	
+	var ctx = myGameArea.context;
+	var middleScreen = myGameArea.canvas.width / 2;
+	ctx.fillStyle = "black";
+	ctx.fillRect(middleScreen + middleScreen * (rightTimeout / 59), 2, middleScreen, 2);	//one less than timeout so last "tick" is reached
+}
+
+function hitCrossbar(ball, goal)
+{
+	var bottomScreen = myGameArea.canvas.height;
+	if (goal.isLeft)
+	{
+		if (ball.y + ball.radius > bottomScreen - goal.height &&	//if on top of goal
+			ball.x <= goal.width)	//if no corner hit detection, ball.x - ball.radius < goal.width
+		{
+			if (ball.speedY > 0)
+			{
+				ball.speedY = -ball.speedY;	//ball.speedY = -ball.speedY * ball.bounce;
+			}
+		}
+
+		if (ball.x - ball.radius < goal.width && ball.x + ball.radius > goal.width &&	//if a corner hit
+			ball.y - ball.radius < bottomScreen - goal.height && ball.y + ball.radius > bottomScreen - goal.height)
+		{
+			if (ball.speedX < 0)
+			{
+				ball.speedX = -ball.speedX;	//ball.speedX = -ball.speedX * ball.bounce;
+			}
+		}		
+	}
+	else
+	{
+		var rightScreen = myGameArea.canvas.width;
+		if ((ball.y + ball.radius > bottomScreen - goal.height) &&	//if on top of goal
+			(ball.x >= rightScreen - goal.width)) //if no corner hit detection, ball.x + ball.radius > rightScreen - goal.width
+		{
+			if (ball.speedY > 0)
+			{
+				ball.speedY = -ball.speedY;	//ball.speedY = -ball.speedY * ball.bounce;
+			}
+		}
+		if (ball.x - ball.radius < rightScreen - goal.width && ball.x + ball.radius > rightScreen - goal.width &&	//if a corner hit
+			ball.y - ball.radius < bottomScreen - goal.height && ball.y + ball.radius > bottomScreen - goal.height)
+		{
+			if (ball.speedX > 0)
+			{
+				ball.speedX = -ball.speedX;	//ball.speedX = -ball.speedX * ball.bounce;
+			}
+		}
 	}
 }
 
