@@ -22,7 +22,7 @@ function startGame()
     myGameArea.start();
     redSlime = new player(15, "red", leftInitX, leftInitY);	//constructor(radius, color, startingX, startingY)
 	blueSlime = new player(15, "blue", rightInitX, rightInitY);
-	soccerBall = new ball(5, "purple", ballInitX, ballInitY, 0.75); //bounce is last parameter
+	soccerBall = new ball(15, "purple", ballInitX, ballInitY, 0.75); //bounce is last parameter
 	redGoal = new goal(50, 70, "black", true);		//bool = is this the red/left goal?
 	blueGoal = new goal(50, 70, "black", false);
 }
@@ -111,7 +111,6 @@ function ball(radius, color, x, y, bounce)
     this.radius = radius;	//size of ball
     this.x = x;				//x-coordinate
     this.y = y;				//y-coordinate
-	this.radius = 5;		//size of the ball
 	this.speedX = 0;		//speed travelling horizontally
 	this.speedY = 0;		//speed travelling vertically
 	this.gravity = 0.10;	
@@ -165,6 +164,7 @@ function goal(width, height, color, isRed)
 {
     this.width = width;
 	this.height = height;
+	this.isLeft = isRed;
 	this.update = function()	//puts object on canvas
 	{
 		ctx = myGameArea.context;
@@ -173,11 +173,15 @@ function goal(width, height, color, isRed)
 		if (isRed)
 		{
 			ctx.fillRect(0, bottomScreen - height, width, 1);
+			ctx.fillRect(width - 1, bottomScreen - height, 1, height);
+			//ctx.strokeRect(0, bottomScreen - height, width, height);
 		}
 		else
 		{
 			var rightScreen = myGameArea.canvas.width;
 			ctx.fillRect(rightScreen - width, bottomScreen - height, width, 1);
+			ctx.fillRect(rightScreen - width - 1, bottomScreen - height, 1, height);
+			//ctx.strokeRect(rightScreen - width, bottomScreen - height, width, height);
 		}
 	}
 }
@@ -242,6 +246,8 @@ function updateGameArea() {
   soccerBall.newPos();
   collision(redSlime, soccerBall);
   collision(blueSlime, soccerBall);
+  hitCrossbar(soccerBall, redGoal);
+  hitCrossbar(soccerBall, blueGoal);
   myGameArea.clear();		//clear game area
   redSlime.update();		//print blue's new location
   blueSlime.update();		//print blue's new location
@@ -258,8 +264,12 @@ function resetGameArea(slime1, slime2, ball)
 {
 	slime1.x = leftInitX;
 	slime1.y = leftInitY;
+	slime1.speedX = 0;
+	slime1.speedY = 0;
 	slime2.x = rightInitX;
 	slime2.y = leftInitY;
+	slime2.speedX = 0;
+	slime2.speedY = 0;
 	ball.x = ballInitX;
 	ball.y = ballInitY;
 	ball.speedX = 0;
@@ -268,6 +278,7 @@ function resetGameArea(slime1, slime2, ball)
 
 /**
  * Calculate collisions between a slime player and the soccer ball
+ * See http://flatredball.com/documentation/tutorials/math/circle-collision/
  * @param slime The player object
  * @param soccerBall The ball object
  */
@@ -276,77 +287,138 @@ function collision(slime, soccerBall) {
   var distanceBetweenObjects = distantBetween(slime, soccerBall);
   var overlap = (slime.radius + soccerBall.radius) - distanceBetweenObjects;
   if (overlap >= 0) {
-	
-	var collisionVectorX = slime.x - soccerBall.x;
-	var collisionVectorY = slime.y - soccerBall.y;
-	line(soccerBall.x, soccerBall.y, collisionVectorX + soccerBall.x, collisionVectorY + soccerBall.y, '#000');
+  // Used to make the debug lines long enough to see
+  var DEBUG_VECTOR_MULTIPLIER = 10;
+  line(
+    soccerBall.x,
+    soccerBall.y,
+    soccerBall.x + soccerBall.speedX * DEBUG_VECTOR_MULTIPLIER,
+    soccerBall.y + soccerBall.speedY * DEBUG_VECTOR_MULTIPLIER,
+    'yellow');
 
-	//Normalize the vector.
-	//These numbers tell us the direction of the collision
-	var normalizedCollisionVectorX = collisionVectorX / distanceBetweenObjects;
-	var normalizedCollisionVectorY = collisionVectorY / distanceBetweenObjects;
+  var collisionVectorX = slime.x - soccerBall.x;
+  var collisionVectorY = slime.y - soccerBall.y;
+  line(
+    soccerBall.x,
+    soccerBall.y,
+    soccerBall.x + collisionVectorX,
+    soccerBall.y + collisionVectorY,
+    'black');
 
-	//Find the side that the collision is occurring on
-	soccerBall.x < slime.x ? xSide = 1 : xSide = -1;
-	soccerBall.y > slime.y ? ySide = 1 : ySide = -1;
+  // Normalize the vector.
+  // These numbers tell us the direction of the collision
+  var normalizedCollisionVectorX = collisionVectorX / distanceBetweenObjects;
+  var normalizedCollisionVectorY = collisionVectorY / distanceBetweenObjects;
 
-	//Move the soccer ball out of the collision by multiplying
-	//the overlap with the normalized vector and adding it to
-	//the circles' positions
-	soccerBall.x = soccerBall.x + (normalizedCollisionVectorX * overlap * xSide);
-	soccerBall.y = soccerBall.y + (normalizedCollisionVectorY * overlap * ySide);
-	
-	//1. Calculate the collision surface's properties
 
-	//Find the surface vector's normal (perpendicular line)
-	surfaceVectorsNormalX = collisionVectorY;
-	surfaceVectorsNormalY = -collisionVectorX;
-	line(
-		soccerBall.x - surfaceVectorsNormalX,
-		soccerBall.y - surfaceVectorsNormalY,
-		surfaceVectorsNormalX + soccerBall.x,
-		surfaceVectorsNormalY + soccerBall.y,
-		'#0f0');
+  // Move the soccer ball out of the collision by multiplying
+  //  the overlap with the normalized vector and adding it to
+  //  the soccer ball's position
+  line(
+    soccerBall.x,
+    soccerBall.y,
+    soccerBall.x - (normalizedCollisionVectorX * overlap * DEBUG_VECTOR_MULTIPLIER),
+    soccerBall.y - (normalizedCollisionVectorY * overlap * DEBUG_VECTOR_MULTIPLIER),
+    'cyan');
+  soccerBall.x = soccerBall.x - (normalizedCollisionVectorX * overlap);
+  soccerBall.y = soccerBall.y - (normalizedCollisionVectorY * overlap);
 
-	//2. Bounce the soccer ball off the surface vector
+  //1. Calculate the collision surface's properties (perpendicular line)
 
-	//Find the dot product between the soccer ball and the surface vector
-	var dp1 = soccerBall.speedX * normalizedCollisionVectorX + soccerBall.speedY * surfaceVectorsNormalY;
+  // Find the surface vector (surface vector == tangent vector to the collision vector)
+  var surfaceVectorX = collisionVectorY;
+  var surfaceVectorY = -collisionVectorX;
 
-	//Project the soccer ball's speed onto the collision surface
-    //bounceProjectionX = dp1 * normalizedCollisionVectorX;
-    //bounceProjectionY = dp1 * normalizedCollisionVectorY;
+  line(
+    soccerBall.x + normalizedCollisionVectorX * soccerBall.radius - surfaceVectorX,
+    soccerBall.y + normalizedCollisionVectorY * soccerBall.radius - surfaceVectorY,
+    soccerBall.x + normalizedCollisionVectorX * soccerBall.radius + surfaceVectorX,
+    soccerBall.y + normalizedCollisionVectorY * soccerBall.radius + surfaceVectorY,
+    'green');
+  // Normalize the surface vector
+  var surfaceVectorLength = Math.sqrt(Math.pow(surfaceVectorX, 2) + Math.pow(surfaceVectorY, 2));
+  var surfaceVectorNormalizedX = surfaceVectorX / surfaceVectorLength;
+  var surfaceVectorNormalizedY = surfaceVectorY / surfaceVectorLength;
 
-	//Find the dot product of the soccer ball's speed and the surface's normal (surfaceVectorsNormalX and surfaceVectorsNormalY)
-	var dp2 = 
-	    soccerBall.speedX * (surfaceVectorsNormalX / distanceBetweenObjects) + 
-		soccerBall.speedY * (surfaceVectorsNormalY / distanceBetweenObjects);
-	//Find the dot product between the slime player and the surface
-	var dp3 = 
-	    slime.speedX * normalizedCollisionVectorX + 
-	    slime.speedY * normalizedCollisionVectorY;
+  //2. Bounce the soccer ball off the surface vector
 
-	//4. Calculate the bounce vectors
-	//Project the soccer ball's speed onto the surface's normal
-	// c1.bounce.x = p1B.x + p2A.x;
-	var soccerBallBounceX = (dp2 * (surfaceVectorsNormalX / distanceBetweenObjects)) + (dp3 * normalizedCollisionVectorX);
-	// c1.bounce.y = p1B.y + p2A.y;
-	var soccerBallBounceY = (dp2 * (surfaceVectorsNormalY / distanceBetweenObjects)) + (dp3 * normalizedCollisionVectorY);
+  // Find the relative velocity of the soccerBall to the slime
+  var relativeVelocityX = soccerBall.speedX - slime.speedX;
+  var relativeVelocityY = soccerBall.speedY - slime.speedY;
+  line(
+    soccerBall.x,
+    soccerBall.y,
+    soccerBall.x + relativeVelocityX * DEBUG_VECTOR_MULTIPLIER,
+    soccerBall.y + relativeVelocityY * DEBUG_VECTOR_MULTIPLIER,
+    'red');
 
-	//Add the bounce vector to the soccer ball's speed
-	soccerBall.speedX = soccerBallBounceX;
-	soccerBall.speedY = soccerBallBounceY;
-    
-	// We don't change the player's position because the soccer ball should bounce off the player.
+  // Find the dot product between the relative velocity and the normalized surface vector
+  // This gives us the length of (the soccerBall's velocity projected on the surface vector)
+  var lengthOfVelocityParallelToSurface = relativeVelocityX * surfaceVectorNormalizedX + relativeVelocityY * surfaceVectorNormalizedY;
+
+  // This gives us the soccerBall's velocity projected on the surface vector
+  var velocityVectorOnSurfaceX = surfaceVectorNormalizedX * lengthOfVelocityParallelToSurface;
+  var velocityVectorOnSurfaceY = surfaceVectorNormalizedY * lengthOfVelocityParallelToSurface;
+  line(
+    soccerBall.x,
+    soccerBall.y,
+    soccerBall.x + velocityVectorOnSurfaceX * DEBUG_VECTOR_MULTIPLIER,
+    soccerBall.y + velocityVectorOnSurfaceY * DEBUG_VECTOR_MULTIPLIER,
+    'orange');
+
+  //
+  var velocityVectorPerpendicularToSurfaceX = relativeVelocityX - velocityVectorOnSurfaceX;
+  var velocityVectorPerpendicularToSurfaceY = relativeVelocityY - velocityVectorOnSurfaceY;
+  line(
+    soccerBall.x,
+    soccerBall.y,
+    soccerBall.x + velocityVectorPerpendicularToSurfaceX * DEBUG_VECTOR_MULTIPLIER,
+    soccerBall.y + velocityVectorPerpendicularToSurfaceY * DEBUG_VECTOR_MULTIPLIER,
+    'white');
+
+  var soccerBallBounceX = soccerBall.speedX - (2 * velocityVectorPerpendicularToSurfaceX);
+  var soccerBallBounceY = soccerBall.speedY - (2 * velocityVectorPerpendicularToSurfaceY);
+  line(
+    soccerBall.x,
+    soccerBall.y,
+    soccerBall.x + soccerBallBounceX * DEBUG_VECTOR_MULTIPLIER,
+    soccerBall.y + soccerBallBounceY * DEBUG_VECTOR_MULTIPLIER,
+    'magenta');
+
+  var ctx = myGameArea.context;
+  ctx.font = '18px serif';
+  ctx.fillStyle = '#000';
+  ctx.fillText('yellow = soccerBalls current speed/velocity vector', 0, 15);
+  ctx.fillText('black = collision vector', 0, 30);
+  ctx.fillText('cyan = move soccerBall out of slime vector', 0, 45);
+  ctx.fillText('green = surface/tangent vector', 0, 60);
+  ctx.fillText('red = soccerBall velocity relative to slime velocity', 0, 75);
+  ctx.fillText('orange = soccerBall velocity projected on surface vector (red projected on green)', 0, 90);
+  ctx.fillText('white = soccerBall velocity perpendicular to surface vector (red projected on black)', 0, 105);
+  ctx.fillText('magenta = soccerBalls new velocity/speed (yellow - 2 * white)', 0, 120);
+
+  //Add the bounce vector to the soccer ball's speed
+  soccerBall.speedX = soccerBallBounceX;
+  soccerBall.speedY = soccerBallBounceY;
+
+  // We don't change the player's position because the soccer ball should bounce off the player.
   }
 }
 
 function line(x1, y1, x2, y2, color) {
-ctx = myGameArea.context;
+var ctx = myGameArea.context;
 ctx.strokeStyle = color;
 ctx.beginPath();
 ctx.moveTo(x1, y1);
 ctx.lineTo(x2, y2);
+ctx.closePath();
+ctx.stroke();
+}
+function dot(x, y, color) {
+var ctx = myGameArea.context;
+ctx.strokeStyle = color;
+ctx.beginPath();
+ctx.arc(x, y, 4, 0, Math.PI * 2, true);
 ctx.closePath();
 ctx.stroke();
 }
@@ -358,7 +430,7 @@ ctx.stroke();
  */
 function distantBetween(slime, soccerBall) {
 	return Math.sqrt(
-	    Math.pow(slime.x - soccerBall.x, 2) + 
+	    Math.pow(slime.x - soccerBall.x, 2) +
 	    Math.pow(slime.y - soccerBall.y, 2)
 	);
 }
@@ -366,7 +438,9 @@ function distantBetween(slime, soccerBall) {
 function scored(ball, leftGoal, rightGoal)
 {
 	var rightScreen = myGameArea.canvas.width;
-	if (ball.x + ball.radius < leftGoal.width || ball.x - ball.radius > rightScreen - rightGoal.width)
+	var bottomScreen = myGameArea.canvas.height;
+	if ((ball.x + ball.radius < leftGoal.width && ball.y - ball.radius > bottomScreen - leftGoal.height) ||
+		(ball.x - ball.radius > rightScreen - rightGoal.width && ball.y - ball.radius > bottomScreen - rightGoal.height))
 	{
 		if (ball.x > rightScreen / 2)
 		{
@@ -401,6 +475,11 @@ function goalTendingLeft(slime, goal)
 	{
 		leftTimeout = 0;
 	}
+	
+	var ctx = myGameArea.context;
+	var middleScreen = myGameArea.canvas.width / 2;
+	ctx.fillStyle = "black";
+	ctx.fillRect(0, 2, middleScreen * ((59 - leftTimeout) / 59), 2);	//one less than timeout so last "tick" is reached
 }
 
 function goalTendingRight(slime, goal)
@@ -421,6 +500,47 @@ function goalTendingRight(slime, goal)
 	else
 	{
 		rightTimeout = 0;
+	}
+	
+	var ctx = myGameArea.context;
+	var middleScreen = myGameArea.canvas.width / 2;
+	ctx.fillStyle = "black";
+	ctx.fillRect(middleScreen + middleScreen * (rightTimeout / 59), 2, middleScreen, 2);	//one less than timeout so last "tick" is reached
+}
+
+function hitCrossbar(ball, goal)
+{
+	var bottomScreen = myGameArea.canvas.height;
+	if (goal.isLeft)
+	{
+		if (ball.y + ball.radius > bottomScreen - goal.height &&	//if on top of goal
+			ball.x <= goal.width)	//if no corner hit detection, ball.x - ball.radius < goal.width
+		{
+			ball.speedY = -ball.speedY;	//ball.speedY = -ball.speedY * ball.bounce;
+		}
+		/*
+		if (ball.x - ball.radius < goal.width && ball.x + ball.radius > goal.width &&	//if a corner hit
+			ball.y - ball.radius < bottomScreen - goal.height && ball.y + ball.radius > bottomScreen - goal.height)
+		{
+			ball.speedX = -ball.speedX;	//ball.speedX = -ball.speedX * ball.bounce;
+		}	
+	*/		
+	}
+	else
+	{
+		var rightScreen = myGameArea.canvas.width;
+		if ((ball.y + ball.radius > bottomScreen - goal.height) &&	//if on top of goal
+			(ball.x >= rightScreen - goal.width)) //if no corner hit detection, ball.x + ball.radius > rightScreen - goal.width
+		{
+			ball.speedY = -ball.speedY;	//ball.speedY = -ball.speedY * ball.bounce;
+		}
+		/*
+		if (ball.x - ball.radius < rightScreen - goal.width && ball.x + ball.radius > rightScreen - goal.width &&	//if a corner hit
+			ball.y - ball.radius < bottomScreen - goal.height && ball.y + ball.radius > bottomScreen - goal.height)
+		{
+			ball.speedX = -ball.speedX;	//ball.speedX = -ball.speedX * ball.bounce;
+		}
+		*/
 	}
 }
 
