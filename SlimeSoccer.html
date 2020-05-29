@@ -22,7 +22,7 @@ function startGame()
     myGameArea.start();
     redSlime = new player(15, "red", leftInitX, leftInitY);	//constructor(radius, color, startingX, startingY)
 	blueSlime = new player(15, "blue", rightInitX, rightInitY);
-	soccerBall = new ball(15, "purple", ballInitX, ballInitY, 0.75); //bounce is last parameter
+	soccerBall = new ball(5, "purple", ballInitX, ballInitY, 0.75); //bounce is last parameter
 	redGoal = new goal(50, 70, "black", true);		//bool = is this the red/left goal?
 	blueGoal = new goal(50, 70, "black", false);
 }
@@ -475,7 +475,7 @@ function goalTendingLeft(slime, goal)
 	{
 		leftTimeout = 0;
 	}
-	
+  
 	var ctx = myGameArea.context;
 	var middleScreen = myGameArea.canvas.width / 2;
 	ctx.fillStyle = "black";
