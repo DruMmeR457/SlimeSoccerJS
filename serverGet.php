@@ -38,38 +38,34 @@ if ($handle !== false) {
     closedir( $handle );
 }
 
+$MUTLPLE_EVENT_STRING = '_MULTIPLEVENTS_';
 if (count($all)!=0) {
 
-    // A main lock to ensure save safe writing/reading
-    $mainlock = fopen('serverGet.php','r');
-    if ($mainlock===false) {
-	die('could not create main lock');
-    }
-    flock($mainlock, LOCK_EX);
-
-    // show and empty the first file that is not empty
+    // show and output the first file that is not empty
     for ($x=0; $x<count($all); $x++) {
-	$filename=$all[$x];
+	$filename = $all[$x];
 
 	// prevent sending empty files
-	if (filesize($filename)==0) {
+	if (filesize($filename) == 0) {
 	    unlink($filename);
 	    continue;
 	}
 
-	$file = fopen($filename, 'c+b');
-	flock($file, LOCK_SH);
-	echo fread($file, filesize($filename));
-	fclose($file);
-	unlink($filename);
+	$contents = file_get_contents($filename, 'c+b');
+	$event_partition_index = strpos($contents, $MUTLPLE_EVENT_STRING);
+	if ($event_partition_index === false) {
+	    echo $contents;
+	    unlink($filename);
+	} else {
+	    echo substr($contents, 0, $event_partition_index);
+	    $new_contents = substr($contents, $event_partition_index + strlen($MUTLPLE_EVENT_STRING));
+	    file_put_contents($filename, $new_contents, LOCK_EX);
+	}
 	break;
     }
 
-    // Unlock main lock
-    flock($mainlock, LOCK_UN);
-    fclose($mainlock);
 } else {
-	echo 'retry: 1000', PHP_EOL, PHP_EOL; // shorten the 3 seconds to 1 sec
+	echo '{"retry": 1000}'; // shorten the 3 seconds to 1 sec
 }
 
 ?>
