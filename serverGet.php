@@ -25,47 +25,86 @@ function startsWith($haystack, $needle) {
     return (substr($haystack, 0, strlen($needle) ) === $needle);
 }
 
-// Get a list of all files that start with '_file_' except the file containing
-// messages that this client has sended itsself ('_file_'.$unique).
-$all = array ();
-$handle = opendir ( '../' . basename(dirname(__FILE__)));
-if ($handle !== false) {
-    while (false !== ($filename = readdir($handle))) {
-	if (startsWith($filename, '_file_' /* .$room */) && !(startsWith($filename, '_file_' /*.$room*/ .$unique) )) {
-	    $all [] .= $filename;
-	}
+// look up previous pairings
+$paired_clients = array();
+$this_clients_pair = null;
+$handle = fopen("pairings.db", "r");
+if ($handle) {
+    while (($line = fgets($handle)) !== false && $this_clients_pair === null) {
+        // process the line read.
+        $pair = preg_split("/[=\s]+/", $line);
+        if ($unique == $pair[0]) {
+            $this_clients_pair = $pair[1];
+        }
+        if ($unique == $pair[1]) {
+            $this_clients_pair = $pair[0];
+        }
+        $paired_clients[$pair[0]] = true;
+        $paired_clients[$pair[1]] = true;
     }
-    closedir( $handle );
+
+    fclose($handle);
+} else {
+    // error opening the file.
+    die('Could not read pairing DB');
 }
 
-$MUTLPLE_EVENT_STRING = '_MULTIPLEVENTS_';
-if (count($all)!=0) {
-
-    // show and output the first file that is not empty
-    for ($x=0; $x<count($all); $x++) {
-	$filename = $all[$x];
-
-	// prevent sending empty files
-	if (filesize($filename) == 0) {
-	    unlink($filename);
-	    continue;
-	}
-
-	$contents = file_get_contents($filename, 'c+b');
-	$event_partition_index = strpos($contents, $MUTLPLE_EVENT_STRING);
-	if ($event_partition_index === false) {
-	    echo $contents;
-	    unlink($filename);
-	} else {
-	    echo substr($contents, 0, $event_partition_index);
-	    $new_contents = substr($contents, $event_partition_index + strlen($MUTLPLE_EVENT_STRING));
-	    file_put_contents($filename, $new_contents, LOCK_EX);
-	}
-	break;
+$paired_filename = null;
+if ($this_clients_pair !== null) {
+    // This client already has a pair
+    $paired_filename = '_file_' . $this_clients_pair;
+    if (!file_exists($paired_filename)) {
+        $paired_filename = null;
     }
-
 } else {
-	echo '{"retry": 1000}'; // shorten the 3 seconds to 1 sec
+    // Find a client without a pair (that isn't itself)
+    $handle = opendir('../' . basename(dirname(__FILE__)));
+    if ($handle !== false) {
+        while (false !== ($filename = readdir($handle))) {
+	    if (startsWith($filename, '_file_' /* .$room */) && !(startsWith($filename, '_file_' /*.$room*/ . $unique) )) {
+                $potential_filename_client_id = preg_split("/_file_/", $filename)[1];
+                if (!array_key_exists($potential_filename_client_id, $paired_clients)) {
+                    $paired_filename = $filename;
+                    break;
+                }
+	    }
+        }
+        closedir($handle);
+    }
+}
+
+if ($paired_filename !== null) {
+    $filename = $paired_filename;
+    // prevent sending empty files
+    if (filesize($filename) == 0) {
+        unlink($filename);
+    }
+    
+    #$contents = file_get_contents($filename, 'c+b');
+    $handle = fopen($filename, "rw");
+    if ($handle) {
+        $first_line = fgets($handle);
+        $new_contents = '';
+        while (($line = fgets($handle)) !== false) {
+            $new_contents .= $line;
+        }
+    } else {
+        die('Could not read file '.$filename);
+    }
+    fclose($handle);
+    if ($new_contents === '') {
+        unlink($filename);
+    } else {
+        file_put_contents($filename, $new_contents, LOCK_EX);
+    }
+    echo $first_line;
+
+    // Pair the two clients
+    if ($this_clients_pair === null) {
+        file_put_contents('pairings.db', $unique.'='.$potential_filename_client_id.PHP_EOL, FILE_APPEND | LOCK_EX);
+    }
+} else {
+    echo '{"retry": 1000}'; // shorten the 3 seconds to 1 sec
 }
 
 ?>
