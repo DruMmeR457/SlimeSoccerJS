@@ -10,6 +10,7 @@ canvas
 }
 		</style>
 		<!--
+		WebRTC shim
 			https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/adapter.js
 			https://github.com/webrtc/adapter/tree/master/release
 		-->
@@ -52,15 +53,14 @@ function startup() {
 	receiveBox = document.getElementById('receivebox');
 	
 	// Set event listeners for user interface widgets
-	connectButton.addEventListener('click', connectPeers, false);
+	connectButton.addEventListener('click', createOfferAndPollForAnswer, false);
 	joinButton.addEventListener('click', joinExisting, false);
 	disconnectButton.addEventListener('click', disconnectPeers, false);
 	sendButton.addEventListener('click', sendMessage, false);
 }
-function connectPeers() {
+function createOfferAndPollForAnswer() {
 	// Set up the local peer
 	localConnection = new RTCPeerConnection();
-	remoteConnection = null;
 	//https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel
 	//Setting "negotiated: false" (or leaving it out) will automatically trigger the RTCPeerConnection to handle the negotiations for you, causing the remote peer to create a data channel and linking the two together across the network.
 	const dataChannelOptions = {
@@ -72,11 +72,12 @@ function connectPeers() {
 		//id: '???', //Allows you to provide your own ID for the channel (can only be used in combination with negotiated set to true)
 	};
 	sendChannel = localConnection.createDataChannel("sendChannel", dataChannelOptions);
+	//update the UI on connect/disconnect
 	sendChannel.onopen = handleSendChannelStatusChange;
 	sendChannel.onclose = handleSendChannelStatusChange;
 
 	// set up ICE candidates
-	//Note: In a real-world scenario in which the two peers aren't running in the same context, the process is a bit more involved; each side provides, one at a time, a suggested way to connect (for example, UDP, UDP with a relay, TCP, etc.) by calling RTCPeerConnection.addIceCandidate(), and they go back and forth until agreement is reached. But here, we just accept the first offer on each side, since there's no actual networking involved.
+	//onicecandidate() is automatically called by the browser with candidates once the localConnection is started
 	localConnection.onicecandidate = function(event) {
 		console.log('local onicecandidate', event);
 		if (event.candidate) {
@@ -85,42 +86,42 @@ function connectPeers() {
 		}
 	};
 	
+	//https://www.html5rocks.com/en/tutorials/webrtc/infrastructure/
 	//https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Connectivity
 	//Start the connection attempt by hosting
 	localConnection.createOffer() //3. create an SDP (Session Description Protocol) blob describing the connection we want to make
 		.then(offer => {
 			localConnection.setLocalDescription(offer); //4. configure the local end of the connection.
-			//5. ask STUN servers to generate the ice candidates
+			//TODO //5. ask STUN servers to generate the ice candidates
 			makeAjaxCall(
 				'http://slime.glenwatson.me/serverPost.php?unique=1234',
 				'POST',
-				offer.sdp		
-			); //6. uses the signaling server to transmit the offer to the intended receiver of the call.
+				JSON.stringify(offer)
+			); //6. uses the signaling server to transmit the offer.
 			// start polling for an answer
 			return startPollingForSdpAnswer(); //12. The caller receives the answer.
 		})
-		.then((answer) => localConnection.setRemoteDescription(new RTCSessionDescription({sdp: answer, type: 'answer'}))) //13. Call setRemoteDescription() to set the answer as the remote description for its end of the call. It now knows the configuration of both peers.
+		.then((answer) => localConnection.setRemoteDescription(new RTCSessionDescription(answer))) //13. Call setRemoteDescription() to set the answer as the remote description for its end of the call. It now knows the configuration of both peers.
+		.then(() => console.log('host is connected'))
 		.catch((e) => console.error(e));
 }
 function joinExisting() {
 	localConnection = new RTCPeerConnection();
-	remoteConnection = null;
 	getOffer()
-		.then((offer) => localConnection.setRemoteDescription(new RTCSessionDescription({sdp: offer, type: 'offer'}))) //7. Receive the offer and calls RTCPeerConnection.setRemoteDescription() to record it as the remote description (the description of the host)
+		.then((offer) => localConnection.setRemoteDescription(new RTCSessionDescription(offer))) //7. Receive the offer and calls RTCPeerConnection.setRemoteDescription() to record it as the remote description (the description of the host)
 		.then(() => localConnection.createAnswer()) //8-9. Create an answer by calling RTCPeerConnection.createAnswer().
 		.then((answer) => {
 			localConnection.setLocalDescription(answer); //10. Call RTCPeerConnection.setLocalDescription(), passing in the created answer, to set the answer as its local description. The recipient now knows the configuration of both ends of the connection.
 			makeAjaxCall(
 				'http://slime.glenwatson.me/serverPost.php?unique=5678',
 				'POST',
-				answer.sdp
+				JSON.stringify(answer)
 			); //11. Use the signaling server to send the answer to the caller.
 		})
 		.catch((e) => console.error(e));
 }
 function startPollingForSdpAnswer() {
 	var delay = 1000;
-	var retryString = 'retry: ';
 	return new Promise((resolve, reject) => {
 		function doPoll() {
 			console.log('polling for answer with delay', delay);
@@ -129,13 +130,14 @@ function startPollingForSdpAnswer() {
 					'http://slime.glenwatson.me/serverGet.php?unique=1234',
 					'POST'
 				).then((response) => {
-					if (response.startsWith(retryString)) {
+					var json = JSON.parse(response);
+					if (json.retry) {
 						//server controlled retry delay
-						delay = parseInt(response.substr(retryString.length));
+						delay = json.retry;
 						doPoll();
 					} else {
 						console.log('Got an answer!');
-						resolve(response);
+						resolve(json);
 					}
 				}).catch((e) => console.error(e));
 			}, delay);
@@ -147,7 +149,16 @@ function getOffer() {
 	return makeAjaxCall(
 		'http://slime.glenwatson.me/serverGet.php?unique=5678',
 		'GET'
-	);
+	).then((response) => {
+		if (!response) {
+			throw Error('No offer found');
+		}
+		var json = JSON.parse(response);
+		if (json.retry) {
+			throw Error('No offer found');
+		}
+		return json;
+	});
 };
 function makeAjaxCall(url, method, data) {
 	var xhr = new XMLHttpRequest();

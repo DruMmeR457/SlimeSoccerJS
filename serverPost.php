@@ -13,25 +13,12 @@ if (strlen($unique)==0 || ctype_digit($unique)===false) {
 }
 
     
-// A main lock to ensure save safe writing/reading
-$mainlock = fopen('serverGet.php','r');
-if ($mainlock===false) {
-    die('could not create main lock');
-}
-flock($mainlock, LOCK_EX);
-   
 // Add the new message to file
 $filename = '_file_' /*.$room*/ . $unique;
-$file = fopen($filename,'ab');
-if (filesize($filename)!=0) {
-    fwrite($file,'_MULTIPLEVENTS_');
+if (file_exists($filename) && filesize($filename) != 0) {
+    file_put_contents($filename, '_MULTIPLEVENTS_', FILE_APPEND | LOCK_EX);
 }
 $posted = file_get_contents('php://input');
-fwrite($file,$posted);
-fclose($file);
-
-// Unlock main lock
-flock($mainlock,LOCK_UN);
-fclose($mainlock);
+file_put_contents($filename, $posted, FILE_APPEND | LOCK_EX);
 
 ?>
