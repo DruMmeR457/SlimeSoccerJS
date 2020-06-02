@@ -21,6 +21,9 @@
 		<button id="disconnectButton" disabled>
 			Disconnect
 		</button>
+		<label>Signaling server:
+			<input type="text" id="signalingServer" value="http://slime.glenwatson.me" />
+		</label>
 		<div class="messagebox">
 			<label for="message">Enter a message:
 				<input type="text" name="message" id="message" placeholder="Message text"
@@ -31,7 +34,7 @@
 			</button>
 		</div>
 		<div class="messagebox" id="receivebox">
-			<p>Messages received:</p>
+			<p>Messages:</p>
 		</div>
 		
 		
@@ -49,6 +52,7 @@ function startup() {
 	sendButton = document.getElementById('sendButton');
 	messageInputBox = document.getElementById('message');
 	receiveBox = document.getElementById('receivebox');
+	signalingServerInputBox = document.getElementById('signalingServer');
 	
 	// Set event listeners for user interface widgets
 	connectButton.addEventListener('click', createOfferAndPollForAnswer, false);
@@ -57,6 +61,7 @@ function startup() {
 	sendButton.addEventListener('click', sendMessage, false);
 }
 function createOfferAndPollForAnswer() {
+	signalingServer = signalingServerInputBox.value;
 	// Set up the local peer
 	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
 	//https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel
@@ -81,7 +86,7 @@ function createOfferAndPollForAnswer() {
 		console.log('local onicecandidate', event);
 		if (event.candidate) {
 			makeAjaxCall(
-				'http://slime.glenwatson.me/serverPost.php?unique=1234',
+				signalingServer + '/serverPost.php?unique=1234',
 				'POST',
 				JSON.stringify({type:'ice_candidate', candidate: event.candidate}));
 		}
@@ -95,7 +100,7 @@ function createOfferAndPollForAnswer() {
 			localConnection.setLocalDescription(offer); //4. configure the local end of the connection.
 			//TODO //5. ask STUN servers to generate the ice candidates
 			makeAjaxCall(
-				'http://slime.glenwatson.me/serverPost.php?unique=1234',
+				signalingServer + '/serverPost.php?unique=1234',
 				'POST',
 				JSON.stringify(offer)
 			); //6. uses the signaling server to transmit the offer.
@@ -116,13 +121,14 @@ function createOfferAndPollForAnswer() {
 		
 }
 function joinExisting() {
+	signalingServer = signalingServerInputBox.value;
 	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
 	localConnection.ondatachannel = receiveChannelCallback;
 	localConnection.onicecandidate = function(event) {
 		console.log('onicecandidate', event);
 		if (event.candidate) {
 			makeAjaxCall(
-				'http://slime.glenwatson.me/serverPost.php?unique=5678',
+				signalingServer + '/serverPost.php?unique=5678',
 				'POST',
 				JSON.stringify({type:'ice_candidate', candidate: event.candidate}));
 		}
@@ -137,7 +143,7 @@ function joinExisting() {
 				.then((answer) => {
 					localConnection.setLocalDescription(answer); //10. Call RTCPeerConnection.setLocalDescription(), passing in the created answer, to set the answer as its local description. The recipient now knows the configuration of both ends of the connection.
 					makeAjaxCall(
-						'http://slime.glenwatson.me/serverPost.php?unique=5678',
+						signalingServer + '/serverPost.php?unique=5678',
 						'POST',
 						JSON.stringify(answer)
 					) //11. Use the signaling server to send the answer to the caller.
@@ -163,7 +169,7 @@ function startPollingSignalingServer(clientId, messageCallback) {
 		console.log('polling with delay', delay);
 		setTimeout(() => {
 			makeAjaxCall(
-				'http://slime.glenwatson.me/serverGet.php?unique=' + clientId,
+				signalingServer + '/serverGet.php?unique=' + clientId,
 				'POST'
 			).then((response) => {
 				if (response) {
