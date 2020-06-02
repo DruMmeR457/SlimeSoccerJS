@@ -3,11 +3,6 @@
 	<head>
 		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 		<style>
-canvas 
-{
-		border:1px solid #d3d3d3;
-		background-color: #f1f1f1;
-}
 		</style>
 		<!--
 		WebRTC shim
@@ -74,10 +69,11 @@ function createOfferAndPollForAnswer() {
 		//negotiated: false, //If set to true, it removes the automatic setting up of a data channel on the other peer, meaning that you are provided your own way to create a data channel with the same id on the other side
 		//id: '???', //Allows you to provide your own ID for the channel (can only be used in combination with negotiated set to true)
 	};
-	sendChannel = localConnection.createDataChannel("sendChannel", dataChannelOptions);
+	dataChannel = localConnection.createDataChannel("dataChannel", dataChannelOptions);
+	dataChannel.onmessage = handleReceiveMessage
 	//update the UI on connect/disconnect
-	sendChannel.onopen = handleSendChannelStatusChange;
-	sendChannel.onclose = handleSendChannelStatusChange;
+	dataChannel.onopen = handleDataChannelStatusChange;
+	dataChannel.onclose = handleDataChannelStatusChange;
 
 	// set up ICE candidates
 	//onicecandidate() is automatically called by the browser with candidates once the localConnection is started
@@ -106,11 +102,11 @@ function createOfferAndPollForAnswer() {
 			// start polling for an answer
 			var cancelFunction = startPollingSignalingServer('1234', (newMessage) => {
 				if (newMessage.type === 'ice_candidate') {
-					localConnection.addIceCandidate(newMessage.candidate);
+					localConnection.addIceCandidate(new RTCIceCandidate(newMessage.candidate));
 				} else if (newMessage.type === 'answer') { //12. The caller receives the answer.
 					localConnection.setRemoteDescription(new RTCSessionDescription(newMessage)) //13. Call setRemoteDescription() to set the answer as the remote description for its end of the call. It now knows the configuration of both peers.
 						.then(() => console.log('host is connected'))
-						.then(() => cancelFunction()) // stop polling for message from the signaling server
+						//.then(() => cancelFunction()) // stop polling for message from the signaling server
 						.catch((e) => console.error(e));
 				} else {
 					console.error("I didn't expect this message type", newMessage.type);
@@ -121,10 +117,20 @@ function createOfferAndPollForAnswer() {
 }
 function joinExisting() {
 	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
+	localConnection.ondatachannel = receiveChannelCallback;
+	localConnection.onicecandidate = function(event) {
+		console.log('onicecandidate', event);
+		if (event.candidate) {
+			makeAjaxCall(
+				'http://slime.glenwatson.me/serverPost.php?unique=5678',
+				'POST',
+				JSON.stringify({type:'ice_candidate', candidate: event.candidate}));
+		}
+	};
 	// start polling for an offer
 	var cancelFunction = startPollingSignalingServer('5678', (newMessage) => {
 		if (newMessage.type === 'ice_candidate') {
-			localConnection.addIceCandidate(newMessage.candidate);
+			localConnection.addIceCandidate(new RTCIceCandidate(newMessage.candidate));
 		} else if (newMessage.type === 'offer') { 
 			localConnection.setRemoteDescription(new RTCSessionDescription(newMessage)) //7. Receive the offer and calls RTCPeerConnection.setRemoteDescription() to record it as the remote description (the description of the host)
 				.then(() => localConnection.createAnswer()) //8-9. Create an answer by calling RTCPeerConnection.createAnswer()
@@ -137,7 +143,8 @@ function joinExisting() {
 					) //11. Use the signaling server to send the answer to the caller.
 				})
 				.then(() => console.log('joiner is connected'))
-				.then(() => cancelFunction()) // stop polling for message from the signaling server
+				// TODO Do we still need to continue polling (e.g. for ICE) after an offer is complete?
+				//.then(() => cancelFunction()) // stop polling for message from the signaling server
 				.catch((e) => console.error(e));
 		} else {
 			console.error("I didn't expect this message type", newMessage.type);
@@ -159,16 +166,18 @@ function startPollingSignalingServer(clientId, messageCallback) {
 				'http://slime.glenwatson.me/serverGet.php?unique=' + clientId,
 				'POST'
 			).then((response) => {
-				var json = JSON.parse(response);
-				if (json.retry) {
-					//server controlled retry delay
-					delay = json.retry;
-					if (!cancelled) {
-						doPoll();
+				if (response) {
+					var json = JSON.parse(response);
+					if (json.retry) {
+						//server controlled retry delay
+						delay = json.retry;
+					} else {
+						console.log('Got an answer!');
+						messageCallback(json);
 					}
-				} else {
-					console.log('Got an answer!');
-					messageCallback(json);
+				}
+				if (!cancelled) {
+					doPoll();
 				}
 			}).catch((e) => console.error(e));
 		}, delay);
@@ -176,21 +185,6 @@ function startPollingSignalingServer(clientId, messageCallback) {
 	doPoll();
 	return () => {cancelled = true;};
 }
-function getOffer() {
-	return makeAjaxCall(
-		'http://slime.glenwatson.me/serverGet.php?unique=5678',
-		'GET'
-	).then((response) => {
-		if (!response) {
-			throw Error('No offer found');
-		}
-		var json = JSON.parse(response);
-		if (json.retry) {
-			throw Error('No offer found');
-		}
-		return json;
-	});
-};
 function makeAjaxCall(url, method, data) {
 	var xhr = new XMLHttpRequest();
 	var promise = new Promise((resolve, reject) => {
@@ -216,17 +210,17 @@ function makeAjaxCall(url, method, data) {
 
 function receiveChannelCallback(event) {
 	console.log('remote ondatachannel', event);
-	receiveChannel = event.channel;
-	receiveChannel.onmessage = handleReceiveMessage;
-	receiveChannel.onopen = handleReceiveChannelStatusChange;
-	receiveChannel.onclose = handleReceiveChannelStatusChange;
+	dataChannel = event.channel;
+	dataChannel.onmessage = handleReceiveMessage;
+	dataChannel.onopen = handleDataChannelStatusChange;
+	dataChannel.onclose = handleDataChannelStatusChange;
 }
-function handleSendChannelStatusChange(event) {
-	console.log('local handleSendChannelStatusChange', event);
-	if (!sendChannel) {
+function handleDataChannelStatusChange(event) {
+	console.log('local handleDataChannelStatusChange', event);
+	if (!dataChannel) {
 		return;
 	}
-	var state = sendChannel.readyState;
+	var state = dataChannel.readyState;
 
 	if (state === "open") { //finished establishing the link between the two peers
 		messageInputBox.disabled = false;
@@ -241,22 +235,15 @@ function handleSendChannelStatusChange(event) {
 		disconnectButton.disabled = true;
 	}
 }
-function handleReceiveChannelStatusChange(event) {
-	if (receiveChannel) {
-		console.log("Receive channel's status has changed to " + receiveChannel.readyState);
-	}
-}
 function disconnectPeers() {
 	console.log('disconnecting peers');
 	// Close the RTCDataChannels if they're open.
-	sendChannel.close();
-	receiveChannel.close();
+	dataChannel.close();
 	
 	// Close the RTCPeerConnections
 	localConnection.close();
 
-	sendChannel = null;
-	receiveChannel = null;
+	dataChannel = null;
 	localConnection = null;
 	
 	// Update user interface elements
@@ -268,15 +255,19 @@ function disconnectPeers() {
 }
 function sendMessage() {
 	var message = messageInputBox.value;
-	sendChannel.send(message);
+	dataChannel.send(message);
+	appendMessageToRecieveBox('You: ' + message);
 	
 	messageInputBox.value = "";
 	messageInputBox.focus();
 }
 function handleReceiveMessage(event) {
 	console.log('recieve channel onmessage', event);
+	appendMessageToRecieveBox(event.data);
+}
+function appendMessageToRecieveBox(message) {
 	var el = document.createElement("p");
-	var txtNode = document.createTextNode(event.data);
+	var txtNode = document.createTextNode(message);
 	
 	el.appendChild(txtNode);
 	receiveBox.appendChild(el);
