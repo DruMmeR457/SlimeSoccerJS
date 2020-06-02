@@ -41,6 +41,9 @@ canvas
 		
 		
 		<script>
+var STUN_SERVERS = [
+	{url: 'stun:stun.l.google.com:19302'}
+];
 /** 
  * https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Simple_RTCDataChannel_sample
  */
@@ -60,7 +63,7 @@ function startup() {
 }
 function createOfferAndPollForAnswer() {
 	// Set up the local peer
-	localConnection = new RTCPeerConnection();
+	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
 	//https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel
 	//Setting "negotiated: false" (or leaving it out) will automatically trigger the RTCPeerConnection to handle the negotiations for you, causing the remote peer to create a data channel and linking the two together across the network.
 	const dataChannelOptions = {
@@ -81,8 +84,10 @@ function createOfferAndPollForAnswer() {
 	localConnection.onicecandidate = function(event) {
 		console.log('local onicecandidate', event);
 		if (event.candidate) {
-			remoteConnection.addIceCandidate(event.candidate)
-				.catch((e) => console.error(e));
+			makeAjaxCall(
+				'http://slime.glenwatson.me/serverPost.php?unique=1234',
+				'POST',
+				JSON.stringify({type:'ice_candidate', candidate: event.candidate}));
 		}
 	};
 	
@@ -99,51 +104,77 @@ function createOfferAndPollForAnswer() {
 				JSON.stringify(offer)
 			); //6. uses the signaling server to transmit the offer.
 			// start polling for an answer
-			return startPollingForSdpAnswer(); //12. The caller receives the answer.
+			var cancelFunction = startPollingSignalingServer('1234', (newMessage) => {
+				if (newMessage.type === 'ice_candidate') {
+					localConnection.addIceCandidate(newMessage.candidate);
+				} else if (newMessage.type === 'answer') { //12. The caller receives the answer.
+					localConnection.setRemoteDescription(new RTCSessionDescription(newMessage)) //13. Call setRemoteDescription() to set the answer as the remote description for its end of the call. It now knows the configuration of both peers.
+						.then(() => console.log('host is connected'))
+						.then(() => cancelFunction()) // stop polling for message from the signaling server
+						.catch((e) => console.error(e));
+				} else {
+					console.error("I didn't expect this message type", newMessage.type);
+				}
+			}); 
 		})
-		.then((answer) => localConnection.setRemoteDescription(new RTCSessionDescription(answer))) //13. Call setRemoteDescription() to set the answer as the remote description for its end of the call. It now knows the configuration of both peers.
-		.then(() => console.log('host is connected'))
-		.catch((e) => console.error(e));
+		
 }
 function joinExisting() {
-	localConnection = new RTCPeerConnection();
-	getOffer()
-		.then((offer) => localConnection.setRemoteDescription(new RTCSessionDescription(offer))) //7. Receive the offer and calls RTCPeerConnection.setRemoteDescription() to record it as the remote description (the description of the host)
-		.then(() => localConnection.createAnswer()) //8-9. Create an answer by calling RTCPeerConnection.createAnswer().
-		.then((answer) => {
-			localConnection.setLocalDescription(answer); //10. Call RTCPeerConnection.setLocalDescription(), passing in the created answer, to set the answer as its local description. The recipient now knows the configuration of both ends of the connection.
-			makeAjaxCall(
-				'http://slime.glenwatson.me/serverPost.php?unique=5678',
-				'POST',
-				JSON.stringify(answer)
-			); //11. Use the signaling server to send the answer to the caller.
-		})
-		.catch((e) => console.error(e));
-}
-function startPollingForSdpAnswer() {
-	var delay = 1000;
-	return new Promise((resolve, reject) => {
-		function doPoll() {
-			console.log('polling for answer with delay', delay);
-			setTimeout(() => {
-				makeAjaxCall(
-					'http://slime.glenwatson.me/serverGet.php?unique=1234',
-					'POST'
-				).then((response) => {
-					var json = JSON.parse(response);
-					if (json.retry) {
-						//server controlled retry delay
-						delay = json.retry;
-						doPoll();
-					} else {
-						console.log('Got an answer!');
-						resolve(json);
-					}
-				}).catch((e) => console.error(e));
-			}, delay);
-		};
-		doPoll();
+	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
+	// start polling for an offer
+	var cancelFunction = startPollingSignalingServer('5678', (newMessage) => {
+		if (newMessage.type === 'ice_candidate') {
+			localConnection.addIceCandidate(newMessage.candidate);
+		} else if (newMessage.type === 'offer') { 
+			localConnection.setRemoteDescription(new RTCSessionDescription(newMessage)) //7. Receive the offer and calls RTCPeerConnection.setRemoteDescription() to record it as the remote description (the description of the host)
+				.then(() => localConnection.createAnswer()) //8-9. Create an answer by calling RTCPeerConnection.createAnswer()
+				.then((answer) => {
+					localConnection.setLocalDescription(answer); //10. Call RTCPeerConnection.setLocalDescription(), passing in the created answer, to set the answer as its local description. The recipient now knows the configuration of both ends of the connection.
+					makeAjaxCall(
+						'http://slime.glenwatson.me/serverPost.php?unique=5678',
+						'POST',
+						JSON.stringify(answer)
+					) //11. Use the signaling server to send the answer to the caller.
+				})
+				.then(() => console.log('joiner is connected'))
+				.then(() => cancelFunction()) // stop polling for message from the signaling server
+				.catch((e) => console.error(e));
+		} else {
+			console.error("I didn't expect this message type", newMessage.type);
+		}
 	});
+}
+/**
+ * @param clientId The unique client ID for this browser session
+ * @param messageCallback Called for each message received
+ * @return A function the caller uses to stop polling
+ */
+function startPollingSignalingServer(clientId, messageCallback) {
+	var delay = 1000;
+	var cancelled = false;
+	function doPoll() {
+		console.log('polling with delay', delay);
+		setTimeout(() => {
+			makeAjaxCall(
+				'http://slime.glenwatson.me/serverGet.php?unique=' + clientId,
+				'POST'
+			).then((response) => {
+				var json = JSON.parse(response);
+				if (json.retry) {
+					//server controlled retry delay
+					delay = json.retry;
+					if (!cancelled) {
+						doPoll();
+					}
+				} else {
+					console.log('Got an answer!');
+					messageCallback(json);
+				}
+			}).catch((e) => console.error(e));
+		}, delay);
+	};
+	doPoll();
+	return () => {cancelled = true;};
 }
 function getOffer() {
 	return makeAjaxCall(
