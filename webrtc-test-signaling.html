@@ -24,6 +24,9 @@
 		<label>Signaling server:
 			<input type="text" id="signalingServer" value="http://slime.glenwatson.me" />
 		</label>
+		<label>Your ID:
+			<input type="number" id="clientId" />
+		</label>
 		<div class="messagebox">
 			<label for="message">Enter a message:
 				<input type="text" name="message" id="message" placeholder="Message text"
@@ -53,14 +56,18 @@ function startup() {
 	messageInputBox = document.getElementById('message');
 	receiveBox = document.getElementById('receivebox');
 	signalingServerInputBox = document.getElementById('signalingServer');
+	clientIdInputBox = document.getElementById('clientId');
+	clientIdInputBox.value = getClientId();
 	
 	// Set event listeners for user interface widgets
 	connectButton.addEventListener('click', createOfferAndPollForAnswer, false);
 	joinButton.addEventListener('click', joinExisting, false);
 	disconnectButton.addEventListener('click', disconnectPeers, false);
 	sendButton.addEventListener('click', sendMessage, false);
+	clientIdInputBox.onblur = (e) => setClientId(e.target.value);
 }
 function createOfferAndPollForAnswer() {
+	disableUI();
 	signalingServer = signalingServerInputBox.value;
 	// Set up the local peer
 	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
@@ -121,6 +128,7 @@ function createOfferAndPollForAnswer() {
 		
 }
 function joinExisting() {
+	disableUI();
 	signalingServer = signalingServerInputBox.value;
 	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
 	localConnection.ondatachannel = receiveChannelCallback;
@@ -221,6 +229,16 @@ function receiveChannelCallback(event) {
 	dataChannel.onopen = handleDataChannelStatusChange;
 	dataChannel.onclose = handleDataChannelStatusChange;
 }
+function disableUI() {
+
+	connectButton.disabled = true;
+	joinButton.disabled = true;
+	disconnectButton.disabled = true;
+	signalingServerInputBox.disabled = true;
+	clientIdInputBox.disabled = true;
+	messageInputBox.disabled = true;
+	sendButton.disabled = true;
+}
 function handleDataChannelStatusChange(event) {
 	console.log('local handleDataChannelStatusChange', event);
 	if (!dataChannel) {
@@ -234,11 +252,17 @@ function handleDataChannelStatusChange(event) {
 		sendButton.disabled = false;
 		disconnectButton.disabled = false;
 		connectButton.disabled = true;
+		joinButton.disabled = true;
+		clientIdInputBox.disabled = true;
+		signalingServerInputBox.disabled = true;
 	} else { //"closed"
 		messageInputBox.disabled = true;
 		sendButton.disabled = true;
 		connectButton.disabled = false;
+		joinButton.disabled = false;
 		disconnectButton.disabled = true;
+		clientIdInputBox.disabled = false;
+		signalingServerInputBox.disabled = false;
 	}
 }
 function disconnectPeers() {
@@ -254,10 +278,13 @@ function disconnectPeers() {
 	
 	// Update user interface elements
 	connectButton.disabled = false;
+	joinButton.disabled = false;
 	disconnectButton.disabled = true;
 	sendButton.disabled = true;
 	messageInputBox.value = "";
 	messageInputBox.disabled = true;
+	clientIdInputBox.disabled = false;
+	signalingServerInputBox.disabled = false;
 }
 function sendMessage() {
 	var message = messageInputBox.value;
@@ -278,12 +305,27 @@ function appendMessageToRecieveBox(message) {
 	el.appendChild(txtNode);
 	receiveBox.appendChild(el);
 }
-function handleLocalAddCandidateSuccess() {
-	connectButton.disabled = true;
+/**
+ * Get the client's ID from the URL or local storage
+ */
+function getClientId() {
+	var clientId = parseInt(window.location.hash.substr(1));
+	if (!clientId) {
+		clientId = localStorage.getItem('clientId');
+	}
+	if (!clientId) {
+		//5-digit random number
+		clientId =  Math.floor(Math.random() * 10e4);
+	}
+	setClientId(clientId);
+	return clientId;
 }
-
-function handleRemoteAddCandidateSuccess() {
-	disconnectButton.disabled = false;
+/**
+ * Update the client's ID in the URL and local storage
+ */
+function setClientId(clientId) {
+	localStorage.setItem('clientId', clientId);
+	window.location.hash = clientId;
 }
 		</script>
 	</body>
