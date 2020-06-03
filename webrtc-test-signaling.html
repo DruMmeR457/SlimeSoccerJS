@@ -66,11 +66,26 @@ function startup() {
 	sendButton.addEventListener('click', sendMessage, false);
 	clientIdInputBox.onblur = (e) => setClientId(e.target.value);
 }
+function readConfigFromUi() {
+	signalingServer = signalingServerInputBox.value;
+	clientId = clientIdInputBox.value;
+}
+function newLocalRTCPeerConnection() {
+	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
+	// set up ICE candidates
+	//onicecandidate() is automatically called by the browser with candidates once the localConnection is started
+	localConnection.onicecandidate = function(event) {
+		console.log('local onicecandidate', event);
+		if (event.candidate) {
+			sendToSignalingServer({type:'ice_candidate', candidate: event.candidate});
+		}
+	};
+}
 function createOfferAndPollForAnswer() {
 	disableUI();
-	signalingServer = signalingServerInputBox.value;
+	readConfigFromUi();
 	// Set up the local peer
-	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
+	newLocalRTCPeerConnection();
 	//https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel
 	//Setting "negotiated: false" (or leaving it out) will automatically trigger the RTCPeerConnection to handle the negotiations for you, causing the remote peer to create a data channel and linking the two together across the network.
 	const dataChannelOptions = {
@@ -87,18 +102,6 @@ function createOfferAndPollForAnswer() {
 	dataChannel.onopen = handleDataChannelStatusChange;
 	dataChannel.onclose = handleDataChannelStatusChange;
 
-	// set up ICE candidates
-	//onicecandidate() is automatically called by the browser with candidates once the localConnection is started
-	localConnection.onicecandidate = function(event) {
-		console.log('local onicecandidate', event);
-		if (event.candidate) {
-			makeAjaxCall(
-				signalingServer + '/serverPost.php?unique=1234',
-				'POST',
-				JSON.stringify({type:'ice_candidate', candidate: event.candidate}));
-		}
-	};
-	
 	//https://www.html5rocks.com/en/tutorials/webrtc/infrastructure/
 	//https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Connectivity
 	//Start the connection attempt by hosting
@@ -106,13 +109,9 @@ function createOfferAndPollForAnswer() {
 		.then(offer => {
 			localConnection.setLocalDescription(offer); //4. configure the local end of the connection.
 			//TODO //5. ask STUN servers to generate the ice candidates
-			makeAjaxCall(
-				signalingServer + '/serverPost.php?unique=1234',
-				'POST',
-				JSON.stringify(offer)
-			); //6. uses the signaling server to transmit the offer.
+			sendToSignalingServer(offer); //6. uses the signaling server to transmit the offer.
 			// start polling for an answer
-			var cancelFunction = startPollingSignalingServer('1234', (newMessage) => {
+			var cancelFunction = startPollingSignalingServer(clientId, (newMessage) => {
 				if (newMessage.type === 'ice_candidate') {
 					localConnection.addIceCandidate(new RTCIceCandidate(newMessage.candidate));
 				} else if (newMessage.type === 'answer') { //12. The caller receives the answer.
@@ -129,20 +128,13 @@ function createOfferAndPollForAnswer() {
 }
 function joinExisting() {
 	disableUI();
-	signalingServer = signalingServerInputBox.value;
-	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
+	readConfigFromUi();
+	// Set up the local peer
+	newLocalRTCPeerConnection();
 	localConnection.ondatachannel = receiveChannelCallback;
-	localConnection.onicecandidate = function(event) {
-		console.log('onicecandidate', event);
-		if (event.candidate) {
-			makeAjaxCall(
-				signalingServer + '/serverPost.php?unique=5678',
-				'POST',
-				JSON.stringify({type:'ice_candidate', candidate: event.candidate}));
-		}
-	};
+	
 	// start polling for an offer
-	var cancelFunction = startPollingSignalingServer('5678', (newMessage) => {
+	var cancelFunction = startPollingSignalingServer(clientId, (newMessage) => {
 		if (newMessage.type === 'ice_candidate') {
 			localConnection.addIceCandidate(new RTCIceCandidate(newMessage.candidate));
 		} else if (newMessage.type === 'offer') { 
@@ -150,11 +142,7 @@ function joinExisting() {
 				.then(() => localConnection.createAnswer()) //8-9. Create an answer by calling RTCPeerConnection.createAnswer()
 				.then((answer) => {
 					localConnection.setLocalDescription(answer); //10. Call RTCPeerConnection.setLocalDescription(), passing in the created answer, to set the answer as its local description. The recipient now knows the configuration of both ends of the connection.
-					makeAjaxCall(
-						signalingServer + '/serverPost.php?unique=5678',
-						'POST',
-						JSON.stringify(answer)
-					) //11. Use the signaling server to send the answer to the caller.
+					sendToSignalingServer(answer); //11. Use the signaling server to send the answer to the caller.
 				})
 				.then(() => console.log('joiner is connected'))
 				// TODO Do we still need to continue polling (e.g. for ICE) after an offer is complete?
@@ -200,6 +188,25 @@ function startPollingSignalingServer(clientId, messageCallback) {
 	doPoll();
 	return () => {cancelled = true;};
 }
+/**
+ * Enqueue data to the signaling server
+ * @param jsonObj JSON object to enqueue
+ * @return Promise with the results
+ */
+function sendToSignalingServer(jsonObj) {
+	return makeAjaxCall(
+		signalingServer + '/serverPost.php?unique=' + clientId,
+		'POST',
+		jsonObj ? JSON.stringify(jsonObj) : undefined
+	);
+}
+/**
+ * Make an XHR request to an endpoint.
+ * @param url endpoint to call
+ * @param method HTTP method to use. (GET, POST, PUT, etc)
+ * @param data JSON object to enqueue
+ * @return Promise with the results
+ */
 function makeAjaxCall(url, method, data) {
 	var xhr = new XMLHttpRequest();
 	var promise = new Promise((resolve, reject) => {
@@ -231,7 +238,6 @@ function receiveChannelCallback(event) {
 	dataChannel.onclose = handleDataChannelStatusChange;
 }
 function disableUI() {
-
 	connectButton.disabled = true;
 	joinButton.disabled = true;
 	disconnectButton.disabled = true;
@@ -267,13 +273,11 @@ function handleDataChannelStatusChange(event) {
 	}
 }
 function disconnectPeers() {
-	console.log('disconnecting peers');
+	console.log('disconnecting');
 	// Close the RTCDataChannels if they're open.
 	dataChannel.close();
-	
 	// Close the RTCPeerConnections
 	localConnection.close();
-
 	dataChannel = null;
 	localConnection = null;
 	
