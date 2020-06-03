@@ -111,19 +111,13 @@ function createOfferAndPollForAnswer() {
 			//TODO //5. ask STUN servers to generate the ice candidates
 			sendToSignalingServer(offer); //6. uses the signaling server to transmit the offer.
 			// start polling for an answer
-			var cancelFunction = startPollingSignalingServer(clientId, (newMessage) => {
-				if (newMessage.type === 'ice_candidate') {
-					localConnection.addIceCandidate(new RTCIceCandidate(newMessage.candidate));
-				} else if (newMessage.type === 'answer') { //12. The caller receives the answer.
-					localConnection.setRemoteDescription(new RTCSessionDescription(newMessage)) //13. Call setRemoteDescription() to set the answer as the remote description for its end of the call. It now knows the configuration of both peers.
-						.then(() => console.log('host is connected'))
-						//.then(() => cancelFunction()) // stop polling for message from the signaling server
-						.catch((e) => console.error(e));
-				} else {
-					console.error("I didn't expect this message type", newMessage.type);
-				}
-			}); 
-		})
+			var cancelFunction = startPollingSignalingServer(clientId, onNewSignalingMessageHandler(answerMessage => {
+				localConnection.setRemoteDescription(new RTCSessionDescription(answerMessage)) //13. Call setRemoteDescription() to set the answer as the remote description for its end of the call. It now knows the configuration of both peers.
+					.then(() => console.log('host is connected'))
+					//.then(() => cancelFunction()) // stop polling for message from the signaling server
+					.catch((e) => console.error(e));
+			}));
+		});
 		
 }
 function joinExisting() {
@@ -134,24 +128,35 @@ function joinExisting() {
 	localConnection.ondatachannel = receiveChannelCallback;
 	
 	// start polling for an offer
-	var cancelFunction = startPollingSignalingServer(clientId, (newMessage) => {
+	var cancelFunction = startPollingSignalingServer(clientId, onNewSignalingMessageHandler(offerMessage => {
+		localConnection.setRemoteDescription(new RTCSessionDescription(offerMessage)) //7. Receive the offer and calls RTCPeerConnection.setRemoteDescription() to record it as the remote description (the description of the host)
+			.then(() => localConnection.createAnswer()) //8-9. Create an answer by calling RTCPeerConnection.createAnswer()
+			.then((answer) => {
+				localConnection.setLocalDescription(answer); //10. Call RTCPeerConnection.setLocalDescription(), passing in the created answer, to set the answer as its local description. The recipient now knows the configuration of both ends of the connection.
+				sendToSignalingServer(answer); //11. Use the signaling server to send the answer to the caller.
+			})
+			.then(() => console.log('joiner is connected'))
+			// TODO Do we still need to continue polling (e.g. for ICE) after an offer is complete?
+			//.then(() => cancelFunction()) // stop polling for message from the signaling server
+			.catch((e) => console.error(e));
+	}));
+}
+/**
+ * Common code for handling a new signaling message
+ * @param sdpCallback callback for non-common SDP messages.
+ */
+function onNewSignalingMessageHandler(sdpCallback) {
+	return function(newMessage) {
+		// Both host and client want to call addIceCandidate() when offered an ICE candidate
 		if (newMessage.type === 'ice_candidate') {
 			localConnection.addIceCandidate(new RTCIceCandidate(newMessage.candidate));
-		} else if (newMessage.type === 'offer') { 
-			localConnection.setRemoteDescription(new RTCSessionDescription(newMessage)) //7. Receive the offer and calls RTCPeerConnection.setRemoteDescription() to record it as the remote description (the description of the host)
-				.then(() => localConnection.createAnswer()) //8-9. Create an answer by calling RTCPeerConnection.createAnswer()
-				.then((answer) => {
-					localConnection.setLocalDescription(answer); //10. Call RTCPeerConnection.setLocalDescription(), passing in the created answer, to set the answer as its local description. The recipient now knows the configuration of both ends of the connection.
-					sendToSignalingServer(answer); //11. Use the signaling server to send the answer to the caller.
-				})
-				.then(() => console.log('joiner is connected'))
-				// TODO Do we still need to continue polling (e.g. for ICE) after an offer is complete?
-				//.then(() => cancelFunction()) // stop polling for message from the signaling server
-				.catch((e) => console.error(e));
+		// The only two SDP types known are 'offer 'and 'answer'.
+		} else if (newMessage.type === 'offer' || newMessage.type === 'answer') {
+			sdpCallback(newMessage);
 		} else {
 			console.error("I didn't expect this message type", newMessage.type);
 		}
-	});
+	}
 }
 /**
  * @param clientId The unique client ID for this browser session
