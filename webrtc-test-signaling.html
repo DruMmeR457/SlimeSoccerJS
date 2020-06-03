@@ -188,6 +188,7 @@ function startPollingSignalingServer(clientId, messageCallback) {
 					} else {
 						console.log('Got an answer!');
 						messageCallback(json);
+						delay = 0;
 					}
 				}
 				if (!cancelled) {
