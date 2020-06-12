@@ -104,7 +104,7 @@ if ($paired_filename !== null) {
         file_put_contents('pairings.db', $unique.'='.$potential_filename_client_id.PHP_EOL, FILE_APPEND | LOCK_EX);
     }
 } else {
-    echo '{"retry": 1000}'; // shorten the 3 seconds to 1 sec
+    echo '{"retry": 3000}';
 }
 
 ?>
