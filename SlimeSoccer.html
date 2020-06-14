@@ -3,64 +3,126 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <style>
-canvas 
+canvas
 {
     border:1px solid #d3d3d3;
     background-color: #f1f1f1;
 }
 </style>
+  <!--
+  WebRTC shim
+    https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/adapter.js
+    https://github.com/webrtc/adapter/tree/master/release
+  -->
+  <script src="adapter.js"></script>
+  <script src="networking.js"></script>
 </head>
-<body onload="startGame()">
+<body>
+  <button id="host">Host</button>
+  <button id="join">Join</button>
 <script>
 
-var redSlime, blueSlime, soccerBall, leftScore = 0, rightScore = 0, 
+var redSlime, blueSlime, soccerBall, leftScore = 0, rightScore = 0,
 	leftInitX = 90, leftInitY = 0, rightInitX = 390, rightInitY = 0,
-	ballInitX = 240, ballInitY = 150, leftTimeout = 0, rightTimeout = 0;
+	ballInitX = 240, ballInitY = 150, leftTimeout = 0, rightTimeout = 0,
+  isHost = null, joinerKeysPressed = {};
 
-function startGame() 
-{
-    myGameArea.start();
-    redSlime = new player(15, "red", leftInitX, leftInitY);	//constructor(radius, color, startingX, startingY)
+/**
+ * Set up "Host" & "Join" buttons
+ */
+function setupHostJoinButtons() {
+  var hostButton = document.getElementById('host');
+  var joinButton = document.getElementById('join');
+  hostButton.addEventListener('click', function (e) {
+    hostGame();
+    hostButton.remove();
+    joinButton.remove();
+  });
+  joinButton.addEventListener('click', function (e) {
+    joinGame();
+    hostButton.remove();
+    joinButton.remove();
+  });
+}
+setupHostJoinButtons();
+/**
+ * Starts hosting a game
+ */
+function hostGame() {
+  //TODO don't always be 1, generate a unique client ID
+  networking.hostConnection('1', function(joinerMessage) {
+    deserializeLastKeysPressed(joinerMessage.keys);
+    move();
+    networking.sendJavascriptObject(serializeGameStateAsJavascriptObject());
+    draw();
+  }).then(function() {
+    startGame();
+    draw();
+  });
+}
+
+/**
+ * Tries to join an existing game
+ */
+function joinGame() {
+  var firstMessage = true;
+  //TODO don't always be 2, generate a unique client ID
+  networking.joinAHost('2', function(hostMessage) {
+    if (firstMessage) {
+      startGame();
+      firstMessage = false;
+    }
+    deserializeGameStateAsString(hostMessage);
+    draw();
+    networking.sendJavascriptObject(serializeLastKeysPressed());
+  }).then(function() {
+    // Start the back and forth networking calls
+    networking.sendJavascriptObject(serializeLastKeysPressed());
+  });
+}
+
+function startGame() {
+  myGameArea.start();
+  redSlime = new player(15, "red", leftInitX, leftInitY);	//constructor(radius, color, startingX, startingY)
 	blueSlime = new player(15, "blue", rightInitX, rightInitY);
 	soccerBall = new ball(5, "purple", ballInitX, ballInitY, 0.75); //bounce is last parameter
 	redGoal = new goal(50, 70, "black", true);		//bool = is this the red/left goal?
 	blueGoal = new goal(50, 70, "black", false);
 }
 
-var myGameArea = 
+var myGameArea =
 {
     canvas : document.createElement("canvas"),
-    start : function() 
+    start : function()
 	{
         this.canvas.width = 480;
         this.canvas.height = 270;
         this.context = this.canvas.getContext("2d");
         document.body.insertBefore(this.canvas, document.body.childNodes[0]);
-		this.interval = setInterval(updateGameArea, 17);
-		window.addEventListener('keydown', function (e) 
+		window.addEventListener('keydown', function (e)
 		{
-			myGameArea.keys = (myGameArea.keys || []);
+			myGameArea.keys = (myGameArea.keys || {});
 			myGameArea.keys[e.keyCode] = true;
 		})
-		window.addEventListener('keyup', function (e) 
+		window.addEventListener('keyup', function (e)
 		{
-			myGameArea.keys[e.keyCode] = false;
+			delete myGameArea.keys[e.keyCode];
 		})
     },
-	
-	clear : function() 
+
+	clear : function()
 	{
 		this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
 	}
 }
 
-function player(radius, color, x, y) 
+function player(radius, color, x, y)
 {
     this.radius = radius;	//size of player
     this.x = x;				//x-coordinate
     this.y = y;				//y-coordinate
 	this.radius = 25;		//size of the slime player
-	this.speedX = 0;		//speed travelling horizontally	
+	this.speedX = 0;		//speed travelling horizontally
 	this.speedY = 0;		//speed travelling vertically
 	this.gravity = 0.10;
 	this.update = function()	//puts object on canvas
@@ -83,7 +145,7 @@ function player(radius, color, x, y)
 	this.hitBottom = function()	//defines bottom of screen behavior
 	{
 		var bottomScreen = myGameArea.canvas.height;
-		if (this.y > bottomScreen) 
+		if (this.y > bottomScreen)
 		{
 			this.y = bottomScreen;
 			this.speedY = 0;
@@ -106,14 +168,14 @@ function player(radius, color, x, y)
 	}
 }
 
-function ball(radius, color, x, y, bounce) 
+function ball(radius, color, x, y, bounce)
 {
     this.radius = radius;	//size of ball
     this.x = x;				//x-coordinate
     this.y = y;				//y-coordinate
 	this.speedX = 0;		//speed travelling horizontally
 	this.speedY = 0;		//speed travelling vertically
-	this.gravity = 0.10;	
+	this.gravity = 0.10;
 	this.bounce = bounce;	//how high the ball bounces
 	this.update = function()	//puts object on canvas
 	{
@@ -135,7 +197,7 @@ function ball(radius, color, x, y, bounce)
 	this.hitBottom = function()	//defines bottom of screen behavior
 	{
 		var bottomScreen = myGameArea.canvas.height - this.radius;
-		if (this.y > bottomScreen) 
+		if (this.y > bottomScreen)
 		{
 			this.y = bottomScreen;
 			this.speedY = -(this.speedY * this.bounce);
@@ -186,12 +248,12 @@ function goal(width, height, color, isRed)
 	}
 }
 
-function redMoveLeft() 
+function redMoveLeft()
 {
 	redSlime.speedX -= 2;		//red movement speed left
 }
 
-function redMoveRight() 
+function redMoveRight()
 {
 	redSlime.speedX += 2;		//red movement speed right
 }
@@ -204,12 +266,12 @@ function redJump()
 	}
 }
 
-function blueMoveLeft() 
+function blueMoveLeft()
 {
 	blueSlime.speedX -= 2;		//blue movement speed left
 }
 
-function blueMoveRight() 
+function blueMoveRight()
 {
 	blueSlime.speedX += 2;		//blue movement speed right
 }
@@ -232,31 +294,38 @@ function blueStopMove()
 	blueSlime.speedX = 0;
 }
 
-function updateGameArea() {
+function handleKeys() {
+  if (myGameArea.keys && myGameArea.keys[65]) {redMoveLeft(); }  	//'a'
+  if (myGameArea.keys && myGameArea.keys[68]) {redMoveRight(); }	//'d'
+  if (myGameArea.keys && myGameArea.keys[87]) {redJump(); }  		//'w'
+  if (joinerKeysPressed && joinerKeysPressed[37]) {blueMoveLeft(); } 	//left-arrow
+  if (joinerKeysPressed && joinerKeysPressed[39]) {blueMoveRight(); }	//right-arrow
+  if (joinerKeysPressed && joinerKeysPressed[38]) {blueJump(); } 		//up-arrow
+}
+function move() {
   redStopMove();
   blueStopMove();
-  if (myGameArea.keys && myGameArea.keys[37]) {redMoveLeft(); }  	//left
-  if (myGameArea.keys && myGameArea.keys[39]) {redMoveRight(); }	//right
-  if (myGameArea.keys && myGameArea.keys[38]) {redJump(); }  		//jump
-  if (myGameArea.keys && myGameArea.keys[65]) {blueMoveLeft(); } 	//left
-  if (myGameArea.keys && myGameArea.keys[68]) {blueMoveRight(); }	//right
-  if (myGameArea.keys && myGameArea.keys[87]) {blueJump(); } 		//jump
-  redSlime.newPos();		//update blue's location
+  handleKeys();
+  redSlime.newPos();		//update red's location
   blueSlime.newPos();		//update blue's location
   soccerBall.newPos();
   collision(redSlime, soccerBall);
   collision(blueSlime, soccerBall);
   hitCrossbar(soccerBall, redGoal);
   hitCrossbar(soccerBall, blueGoal);
+  scored(soccerBall, redGoal, blueGoal);	//leftmost goal before rightmost
+  goalTendingLeft(redSlime, redGoal);
+  goalTendingRight(blueSlime, blueGoal);
+}
+function draw() {
   myGameArea.clear();		//clear game area
-  redSlime.update();		//print blue's new location
+  redSlime.update();		//print red's new location
   blueSlime.update();		//print blue's new location
   soccerBall.update();
   redGoal.update();
   blueGoal.update();
-  scored(soccerBall, redGoal, blueGoal);	//leftmost goal before rightmost
-  goalTendingLeft(redSlime, redGoal);
-  goalTendingRight(blueSlime, blueGoal);
+  drawGoalTendingLeft();
+  drawGoalTendingRight();
   drawScore();
 }
 
@@ -475,7 +544,9 @@ function goalTendingLeft(slime, goal)
 	{
 		leftTimeout = 0;
 	}
-  
+}
+
+function drawGoalTendingLeft() {
 	var ctx = myGameArea.context;
 	var middleScreen = myGameArea.canvas.width / 2;
 	ctx.fillStyle = "black";
@@ -501,7 +572,8 @@ function goalTendingRight(slime, goal)
 	{
 		rightTimeout = 0;
 	}
-	
+}
+function drawGoalTendingRight() {
 	var ctx = myGameArea.context;
 	var middleScreen = myGameArea.canvas.width / 2;
 	ctx.fillStyle = "black";
@@ -529,7 +601,7 @@ function hitCrossbar(ball, goal)
 			{
 				ball.speedX = -ball.speedX;	//ball.speedX = -ball.speedX * ball.bounce;
 			}
-		}		
+		}
 	}
 	else
 	{
@@ -567,7 +639,64 @@ function drawScore()
 	ctx.fillText(leftScore, rightScreen * (27 / 64), bottomScreen * (3 / 24));
 	ctx.fillStyle = "white";
 	ctx.fillText(rightScore, rightScreen * (35 / 64), bottomScreen * (3 / 24));
-}	
+}
+
+/**
+ * This is what the host sends to the joiner.
+ * @return The state of the game as a Javascript Object
+ */
+function serializeGameStateAsJavascriptObject() {
+  return {
+    "blue": {
+      "x": blueSlime.x,
+      "y": blueSlime.y,
+      "goalTending": leftTimeout,
+      "score": leftScore
+    },
+    "red": {
+      "x": redSlime.x,
+      "y": redSlime.y,
+      "goalTending": rightTimeout,
+      "score": rightScore
+    },
+    "ball": {
+      "x": soccerBall.x,
+      "y": soccerBall.y
+    }
+  };
+}
+/**
+ * This is what the joiner reads from the joiner.
+ * @param gameState The game state to update our game state to
+ */
+function deserializeGameStateAsString(gameState) {
+  blueSlime.x = gameState.blue.x;
+  blueSlime.y = gameState.blue.y;
+  leftTimeout = gameState.blue.goalTending;
+  leftScore = gameState.blue.score;
+  redSlime.x = gameState.red.x;
+  redSlime.y = gameState.red.y;
+  rightTimeout = gameState.red.goalTending;
+  rightScore = gameState.red.score;
+  soccerBall.x = gameState.ball.x;
+  soccerBall.y = gameState.ball.y;
+}
+
+/**
+ * This is what the joiner sends to the host.
+ * @return The keyCode(s) of the keys pressed in an object.
+ */
+function serializeLastKeysPressed() {
+  return {"keys": myGameArea.keys};
+}
+
+/**
+ * This is what the host reads from the joiner.
+ * @param The keyCode(s) of the keys pressed in an object.
+ */
+function deserializeLastKeysPressed(joinersKeys) {
+  joinerKeysPressed = joinersKeys;
+}
 
 </script>
 
