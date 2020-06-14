@@ -53,7 +53,7 @@ function hostGame() {
   networking.hostConnection('1', function(joinerMessage) {
     deserializeLastKeysPressed(joinerMessage.keys);
     move();
-    networking.sendJavascriptObject(serializeGameStateAsJavascriptObject());
+    throttledNetworkUpdate();
     draw();
   }).then(function() {
     startGame();
@@ -80,6 +80,34 @@ function joinGame() {
     networking.sendJavascriptObject(serializeLastKeysPressed());
   });
 }
+/**
+ * Throttles network calls so the game doesn't run too fast.
+ */
+function throttledNetworkUpdate() {
+  if (inThrottle) {
+    // Remember that we were called while throttled
+    // It doesn't matter how many times we were called while throttled, all of
+    // the calls while we are throttled are rolled into one call
+    calledWhileInThrottle = true;
+  } else {
+    networking.sendJavascriptObject(serializeGameStateAsJavascriptObject());
+    // Throttle for 17 milliseconds
+    inThrottle = true;
+    calledWhileInThrottle = false;
+    // Wait for 17 milliseconds to un-throttle
+    setTimeout(function() {
+      // waiting is over
+      inThrottle = false;
+      // Did anything happen while we were waiting?
+      if (calledWhileInThrottle) {
+        // We were called while waiting! Execute that call now.
+        calledWhileInThrottle = false;
+        throttledNetworkUpdate();
+      }
+    }, 17);
+  }
+}
+var inThrottle = false, calledWhileInThrottle = false;
 
 function startGame() {
   myGameArea.start();
