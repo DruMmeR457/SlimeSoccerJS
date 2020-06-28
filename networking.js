@@ -2,6 +2,21 @@ const networking = (function () {
 	const STUN_SERVERS = [
 		{url: 'stun:stun.l.google.com:19302'}
 	];
+	const TURN_SERVERS = [
+		{
+			url: 'turn:numb.viagenie.ca',
+			credential: 'muazkh',
+			username: 'webrtc@live.com'
+		}, {
+     url: 'turn:relay.backups.cz',
+     credential: 'webrtc',
+     username: 'webrtc'
+	 }, {
+     url: 'turn:relay.backups.cz?transport=tcp',
+     credential: 'webrtc',
+     username: 'webrtc'
+	 }
+	];
 	const signalingServer = 'http://slime.glenwatson.me';
 	let localConnection = null,
 		dataChannel = null,
@@ -61,7 +76,7 @@ const networking = (function () {
 	 * Initializes the localConnection with defaults
 	 */
 	function newLocalRTCPeerConnection() {
-		localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
+		localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS.concat(TURN_SERVERS)});
 		// set up ICE candidates
 		//onicecandidate() is automatically called by the browser with candidates once the localConnection is started
 		localConnection.onicecandidate = function(event) {
