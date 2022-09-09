@@ -18,4 +18,6 @@ $filename = '_file_' /*.$room*/ . $unique;
 $posted = file_get_contents('php://input');
 file_put_contents($filename, $posted.PHP_EOL, FILE_APPEND | LOCK_EX);
 
+return "OK"
+
 ?>

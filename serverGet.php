@@ -46,7 +46,7 @@ if ($handle) {
     fclose($handle);
 } else {
     // error opening the file.
-    die('Could not read pairing DB');
+    die('Could not read client pairings DB');
 }
 
 $paired_filename = null;
