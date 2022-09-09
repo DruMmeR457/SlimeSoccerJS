@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<style>
+canvas 
+{
+		border:1px solid #d3d3d3;
+		background-color: #f1f1f1;
+}
+		</style>
+	</head>
+	<body onload="startup()">
+		<button id="connectButton">
+			Connect
+		</button>
+		<button id="disconnectButton" disabled>
+			Disconnect
+		</button>
+		<div class="messagebox">
+			<label for="message">Enter a message:
+				<input type="text" name="message" id="message" placeholder="Message text"
+						inputmode="latin" size=60 maxlength=120 disabled>
+			</label>
+			<button id="sendButton" name="sendButton" class="buttonright" disabled>
+				Send
+			</button>
+		</div>
+		<div class="messagebox" id="receivebox">
+			<p>Messages received:</p>
+		</div>
+		
+		
+		<script>
+/** 
+ * https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Simple_RTCDataChannel_sample
+ */
+function startup() {
+	connectButton = document.getElementById('connectButton');
+	disconnectButton = document.getElementById('disconnectButton');
+	sendButton = document.getElementById('sendButton');
+	messageInputBox = document.getElementById('message');
+	receiveBox = document.getElementById('receivebox');
+	
+	// Set event listeners for user interface widgets
+	connectButton.addEventListener('click', connectPeers, false);
+	disconnectButton.addEventListener('click', disconnectPeers, false);
+	sendButton.addEventListener('click', sendMessage, false);
+}
+function connectPeers() {
+	// Set up the local peer
+	localConnection = new RTCPeerConnection();
+	//https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel
+	//Setting "negotiated: false" (or leaving it out) will automatically trigger the RTCPeerConnection to handle the negotiations for you, causing the remote peer to create a data channel and linking the two together across the network.
+	const dataChannelOptions = {
+		ordered: true, //If the data channel should guarantee order or not
+		//maxPacketLifeTime: 3000, //The maximum time to try and retransmit a failed message in milliseconds
+		//maxRetransmits: 2, //The maximum number of times to try and retransmit a failed message
+		//protocol: 'slime-soccer-protocol', //Allows a subprotocol to be used which provides meta information towards the application
+		//negotiated: false, //If set to true, it removes the automatic setting up of a data channel on the other peer, meaning that you are provided your own way to create a data channel with the same id on the other side
+		//id: '???', //Allows you to provide your own ID for the channel (can only be used in combination with negotiated set to true)
+	};
+	sendChannel = localConnection.createDataChannel("sendChannel", dataChannelOptions);
+	sendChannel.onopen = handleSendChannelStatusChange;
+	sendChannel.onclose = handleSendChannelStatusChange;
+
+	// Set up the remote peer
+	remoteConnection = new RTCPeerConnection();
+	remoteConnection.ondatachannel = receiveChannelCallback;
+
+	// set up ICE candidates
+	//Note: In a real-world scenario in which the two peers aren't running in the same context, the process is a bit more involved; each side provides, one at a time, a suggested way to connect (for example, UDP, UDP with a relay, TCP, etc.) by calling RTCPeerConnection.addIceCandidate(), and they go back and forth until agreement is reached. But here, we just accept the first offer on each side, since there's no actual networking involved.
+	localConnection.onicecandidate = function(event) {
+		console.log('local onicecandidate', event);
+		if (event.candidate) {
+			remoteConnection.addIceCandidate(event.candidate)
+				.catch((e) => console.error(e));
+		}
+	};
+	remoteConnection.onicecandidate = function(event) {
+		console.log('remote onicecandidate', event);
+		if (event.candidate) {
+			localConnection.addIceCandidate(event.candidate)
+				.catch((e) => console.error(e));
+		}
+	};
+		
+	//Start the connection attempt
+	localConnection.createOffer() //create an SDP (Session Description Protocol) blob describing the connection we want to make
+		.then(offer => localConnection.setLocalDescription(offer)) //configure the local end of the connection.
+		.then(() => remoteConnection.setRemoteDescription(localConnection.localDescription)) //connect the local peer to the remote by telling the remote peer about it. In a real application, this would require a signaling server to exchange the description object.
+		.then(() => remoteConnection.createAnswer()) // Reply from the remote peer
+		.then(answer => remoteConnection.setLocalDescription(answer)) //establishe the remote's end of the connection
+		.then(() => localConnection.setRemoteDescription(remoteConnection.localDescription)) //the local connection's remote description is set to refer to the remote peer
+		.catch((e) => console.error(e));
+}
+function receiveChannelCallback(event) {
+	console.log('remote ondatachannel', event);
+	receiveChannel = event.channel;
+	receiveChannel.onmessage = handleReceiveMessage;
+	receiveChannel.onopen = handleReceiveChannelStatusChange;
+	receiveChannel.onclose = handleReceiveChannelStatusChange;
+}
+function handleSendChannelStatusChange(event) {
+	console.log('local handleSendChannelStatusChange', event);
+	if (!sendChannel) {
+		return;
+	}
+	var state = sendChannel.readyState;
+
+	if (state === "open") { //finished establishing the link between the two peers
+		messageInputBox.disabled = false;
+		messageInputBox.focus();
+		sendButton.disabled = false;
+		disconnectButton.disabled = false;
+		connectButton.disabled = true;
+	} else { //"closed"
+		messageInputBox.disabled = true;
+		sendButton.disabled = true;
+		connectButton.disabled = false;
+		disconnectButton.disabled = true;
+	}
+}
+function handleReceiveChannelStatusChange(event) {
+	if (receiveChannel) {
+		console.log("Receive channel's status has changed to " + receiveChannel.readyState);
+	}
+}
+function disconnectPeers() {
+	console.log('disconnecting peers');
+	// Close the RTCDataChannels if they're open.
+	sendChannel.close();
+	receiveChannel.close();
+	
+	// Close the RTCPeerConnections
+	localConnection.close();
+	remoteConnection.close();
+
+	sendChannel = null;
+	receiveChannel = null;
+	localConnection = null;
+	remoteConnection = null;
+	
+	// Update user interface elements
+	connectButton.disabled = false;
+	disconnectButton.disabled = true;
+	sendButton.disabled = true;
+	messageInputBox.value = "";
+	messageInputBox.disabled = true;
+}
+function sendMessage() {
+	var message = messageInputBox.value;
+	sendChannel.send(message);
+	
+	messageInputBox.value = "";
+	messageInputBox.focus();
+}
+function handleReceiveMessage(event) {
+	console.log('recieve channel onmessage', event);
+	var el = document.createElement("p");
+	var txtNode = document.createTextNode(event.data);
+	
+	el.appendChild(txtNode);
+	receiveBox.appendChild(el);
+}
+function handleLocalAddCandidateSuccess() {
+	connectButton.disabled = true;
+}
+
+function handleRemoteAddCandidateSuccess() {
+	disconnectButton.disabled = false;
+}
+		</script>
+	</body>
+</html>

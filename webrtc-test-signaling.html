@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<style>
+		</style>
+		<!--
+		WebRTC shim
+			https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/adapter.js
+			https://github.com/webrtc/adapter/tree/master/release
+		-->
+		<script src="adapter.js"></script>
+	</head>
+	<body onload="startup()">
+		<button id="connectButton">
+			Create
+		</button>
+		<button id="joinButton">
+			Join
+		</button>
+		<button id="disconnectButton" disabled>
+			Disconnect
+		</button>
+		<label>Signaling server:
+			<input type="text" id="signalingServer" value="http://slime.glenwatson.me" />
+		</label>
+		<label>Your ID:
+			<input type="number" id="clientId" />
+		</label>
+		<div class="messagebox">
+			<label for="message">Enter a message:
+				<input type="text" name="message" id="message" placeholder="Message text"
+						inputmode="latin" size=60 maxlength=120 disabled>
+			</label>
+			<button id="sendButton" name="sendButton" class="buttonright" disabled>
+				Send
+			</button>
+		</div>
+		<div class="messagebox" id="receivebox">
+			<p>Messages:</p>
+		</div>
+		
+		
+		<script>
+var STUN_SERVERS = [
+	{url: 'stun:stun.l.google.com:19302'}
+];
+/** 
+ * https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Simple_RTCDataChannel_sample
+ */
+function startup() {
+	connectButton = document.getElementById('connectButton');
+	joinButton = document.getElementById('joinButton');
+	disconnectButton = document.getElementById('disconnectButton');
+	sendButton = document.getElementById('sendButton');
+	messageInputBox = document.getElementById('message');
+	receiveBox = document.getElementById('receivebox');
+	signalingServerInputBox = document.getElementById('signalingServer');
+	clientIdInputBox = document.getElementById('clientId');
+	clientIdInputBox.value = getClientId();
+	
+	// Set event listeners for user interface widgets
+	connectButton.addEventListener('click', createOfferAndPollForAnswer, false);
+	joinButton.addEventListener('click', joinExisting, false);
+	disconnectButton.addEventListener('click', disconnectPeers, false);
+	sendButton.addEventListener('click', sendMessage, false);
+	clientIdInputBox.onblur = (e) => setClientId(e.target.value);
+}
+function readConfigFromUi() {
+	signalingServer = signalingServerInputBox.value;
+	clientId = clientIdInputBox.value;
+}
+function newLocalRTCPeerConnection() {
+	localConnection = new RTCPeerConnection({iceServers: STUN_SERVERS});
+	// set up ICE candidates
+	//onicecandidate() is automatically called by the browser with candidates once the localConnection is started
+	localConnection.onicecandidate = function(event) {
+		console.log('local onicecandidate', event);
+		if (event.candidate) {
+			sendToSignalingServer({type:'ice_candidate', candidate: event.candidate});
+		}
+	};
+}
+function createOfferAndPollForAnswer() {
+	disableUI();
+	readConfigFromUi();
+	// Set up the local peer
+	newLocalRTCPeerConnection();
+	//https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/createDataChannel
+	//Setting "negotiated: false" (or leaving it out) will automatically trigger the RTCPeerConnection to handle the negotiations for you, causing the remote peer to create a data channel and linking the two together across the network.
+	const dataChannelOptions = {
+		ordered: true, //If the data channel should guarantee order or not
+		//maxPacketLifeTime: 3000, //The maximum time to try and retransmit a failed message in milliseconds
+		//maxRetransmits: 2, //The maximum number of times to try and retransmit a failed message
+		//protocol: 'slime-soccer-protocol', //Allows a subprotocol to be used which provides meta information towards the application
+		//negotiated: false, //If set to true, it removes the automatic setting up of a data channel on the other peer, meaning that you are provided your own way to create a data channel with the same id on the other side
+		//id: '???', //Allows you to provide your own ID for the channel (can only be used in combination with negotiated set to true)
+	};
+	dataChannel = localConnection.createDataChannel("dataChannel", dataChannelOptions);
+	dataChannel.onmessage = handleReceiveMessage
+	//update the UI on connect/disconnect
+	dataChannel.onopen = handleDataChannelStatusChange;
+	dataChannel.onclose = handleDataChannelStatusChange;
+
+	//https://www.html5rocks.com/en/tutorials/webrtc/infrastructure/
+	//https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Connectivity
+	//Start the connection attempt by hosting
+	localConnection.createOffer() //3. create an SDP (Session Description Protocol) blob describing the connection we want to make
+		.then(offer => {
+			localConnection.setLocalDescription(offer); //4. configure the local end of the connection.
+			//TODO //5. ask STUN servers to generate the ice candidates
+			sendToSignalingServer(offer); //6. uses the signaling server to transmit the offer.
+			// start polling for an answer
+			var cancelFunction = startPollingSignalingServer(clientId, onNewSignalingMessageHandler(answerMessage => {
+				localConnection.setRemoteDescription(new RTCSessionDescription(answerMessage)) //13. Call setRemoteDescription() to set the answer as the remote description for its end of the call. It now knows the configuration of both peers.
+					.then(() => console.log('host is connected'))
+					//.then(() => cancelFunction()) // stop polling for message from the signaling server
+					.catch((e) => console.error(e));
+			}));
+		});
+		
+}
+function joinExisting() {
+	disableUI();
+	readConfigFromUi();
+	// Set up the local peer
+	newLocalRTCPeerConnection();
+	localConnection.ondatachannel = receiveChannelCallback;
+	
+	// start polling for an offer
+	var cancelFunction = startPollingSignalingServer(clientId, onNewSignalingMessageHandler(offerMessage => {
+		localConnection.setRemoteDescription(new RTCSessionDescription(offerMessage)) //7. Receive the offer and calls RTCPeerConnection.setRemoteDescription() to record it as the remote description (the description of the host)
+			.then(() => localConnection.createAnswer()) //8-9. Create an answer by calling RTCPeerConnection.createAnswer()
+			.then((answer) => {
+				localConnection.setLocalDescription(answer); //10. Call RTCPeerConnection.setLocalDescription(), passing in the created answer, to set the answer as its local description. The recipient now knows the configuration of both ends of the connection.
+				sendToSignalingServer(answer); //11. Use the signaling server to send the answer to the caller.
+			})
+			.then(() => console.log('joiner is connected'))
+			// TODO Do we still need to continue polling (e.g. for ICE) after an offer is complete?
+			//.then(() => cancelFunction()) // stop polling for message from the signaling server
+			.catch((e) => console.error(e));
+	}));
+}
+/**
+ * Common code for handling a new signaling message
+ * @param sdpCallback callback for non-common SDP messages.
+ */
+function onNewSignalingMessageHandler(sdpCallback) {
+	return function(newMessage) {
+		// Both host and client want to call addIceCandidate() when offered an ICE candidate
+		if (newMessage.type === 'ice_candidate') {
+			localConnection.addIceCandidate(new RTCIceCandidate(newMessage.candidate));
+		// The only two SDP types known are 'offer 'and 'answer'.
+		} else if (newMessage.type === 'offer' || newMessage.type === 'answer') {
+			sdpCallback(newMessage);
+		} else {
+			console.error("I didn't expect this message type", newMessage.type);
+		}
+	}
+}
+/**
+ * @param clientId The unique client ID for this browser session
+ * @param messageCallback Called for each message received
+ * @return A function the caller uses to stop polling
+ */
+function startPollingSignalingServer(clientId, messageCallback) {
+	var delay = 1000;
+	var cancelled = false;
+	function doPoll() {
+		console.log('polling with delay', delay);
+		setTimeout(() => {
+			makeAjaxCall(
+				signalingServer + '/serverGet.php?unique=' + clientId,
+				'POST'
+			).then((response) => {
+				if (response) {
+					var json = JSON.parse(response);
+					if (json.retry) {
+						//server controlled retry delay
+						delay = json.retry;
+					} else {
+						console.log('Got an answer!');
+						messageCallback(json);
+						delay = 0;
+					}
+				}
+				if (!cancelled) {
+					doPoll();
+				}
+			}).catch((e) => console.error(e));
+		}, delay);
+	};
+	doPoll();
+	return () => {cancelled = true;};
+}
+/**
+ * Enqueue data to the signaling server
+ * @param jsonObj JSON object to enqueue
+ * @return Promise with the results
+ */
+function sendToSignalingServer(jsonObj) {
+	return makeAjaxCall(
+		signalingServer + '/serverPost.php?unique=' + clientId,
+		'POST',
+		jsonObj ? JSON.stringify(jsonObj) : undefined
+	);
+}
+/**
+ * Make an XHR request to an endpoint.
+ * @param url endpoint to call
+ * @param method HTTP method to use. (GET, POST, PUT, etc)
+ * @param data JSON object to enqueue
+ * @return Promise with the results
+ */
+function makeAjaxCall(url, method, data) {
+	var xhr = new XMLHttpRequest();
+	var promise = new Promise((resolve, reject) => {
+		xhr.onload = function() {
+			if (xhr.status === 200) {
+				// If successful, resolve the promise by passing back the xhr response
+				resolve(xhr.response);
+			} else {
+				// If it fails, reject the promise with a error message
+				reject(Error('Image did not load successfully; error code:' + xhr.statusText));
+			}
+		};
+		xhr.onerror = function() {
+			// Also deal with the case when the entire request fails to begin with
+			// This is probably a network error, so reject the promise with an appropriate message
+			reject(Error('There was a network error.'));
+		};
+	});
+	xhr.open(method, url, true);
+	xhr.send(data);
+	return promise;
+}
+
+function receiveChannelCallback(event) {
+	console.log('remote ondatachannel', event);
+	dataChannel = event.channel;
+	dataChannel.onmessage = handleReceiveMessage;
+	dataChannel.onopen = handleDataChannelStatusChange;
+	dataChannel.onclose = handleDataChannelStatusChange;
+}
+function disableUI() {
+	connectButton.disabled = true;
+	joinButton.disabled = true;
+	disconnectButton.disabled = true;
+	signalingServerInputBox.disabled = true;
+	clientIdInputBox.disabled = true;
+	messageInputBox.disabled = true;
+	sendButton.disabled = true;
+}
+function handleDataChannelStatusChange(event) {
+	console.log('local handleDataChannelStatusChange', event);
+	if (!dataChannel) {
+		return;
+	}
+	var state = dataChannel.readyState;
+
+	if (state === "open") { //finished establishing the link between the two peers
+		messageInputBox.disabled = false;
+		messageInputBox.focus();
+		sendButton.disabled = false;
+		disconnectButton.disabled = false;
+		connectButton.disabled = true;
+		joinButton.disabled = true;
+		clientIdInputBox.disabled = true;
+		signalingServerInputBox.disabled = true;
+	} else { //"closed"
+		messageInputBox.disabled = true;
+		sendButton.disabled = true;
+		connectButton.disabled = false;
+		joinButton.disabled = false;
+		disconnectButton.disabled = true;
+		clientIdInputBox.disabled = false;
+		signalingServerInputBox.disabled = false;
+	}
+}
+function disconnectPeers() {
+	console.log('disconnecting');
+	// Close the RTCDataChannels if they're open.
+	dataChannel.close();
+	// Close the RTCPeerConnections
+	localConnection.close();
+	dataChannel = null;
+	localConnection = null;
+	
+	// Update user interface elements
+	connectButton.disabled = false;
+	joinButton.disabled = false;
+	disconnectButton.disabled = true;
+	sendButton.disabled = true;
+	messageInputBox.value = "";
+	messageInputBox.disabled = true;
+	clientIdInputBox.disabled = false;
+	signalingServerInputBox.disabled = false;
+}
+function sendMessage() {
+	var message = messageInputBox.value;
+	dataChannel.send(message);
+	appendMessageToRecieveBox('You: ' + message);
+	
+	messageInputBox.value = "";
+	messageInputBox.focus();
+}
+function handleReceiveMessage(event) {
+	console.log('recieve channel onmessage', event);
+	appendMessageToRecieveBox(event.data);
+}
+function appendMessageToRecieveBox(message) {
+	var el = document.createElement("p");
+	var txtNode = document.createTextNode(message);
+	
+	el.appendChild(txtNode);
+	receiveBox.appendChild(el);
+}
+/**
+ * Get the client's ID from the URL or local storage
+ */
+function getClientId() {
+	var clientId = parseInt(window.location.hash.substr(1));
+	if (!clientId) {
+		clientId = localStorage.getItem('clientId');
+	}
+	if (!clientId) {
+		//5-digit random number
+		clientId =  Math.floor(Math.random() * 10e4);
+	}
+	setClientId(clientId);
+	return clientId;
+}
+/**
+ * Update the client's ID in the URL and local storage
+ */
+function setClientId(clientId) {
+	localStorage.setItem('clientId', clientId);
+	window.location.hash = clientId;
+}
+		</script>
+	</body>
+</html>

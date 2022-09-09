@@ -1,0 +1,8 @@
+https://www.html5rocks.com/en/tutorials/webrtc/datachannels/
+https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Simple_RTCDataChannel_sample
+https://webrtc.github.io/samples/
+
+https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/adapter.js
+https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Using_data_channels
+
+http://blog.brkho.com/2017/03/15/dive-into-client-server-web-games-webrtc/

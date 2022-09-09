@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<style>
+		</style>
+		<!--
+		WebRTC shim
+			https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/adapter.js
+			https://github.com/webrtc/adapter/tree/master/release
+		-->
+		<script src="adapter.js"></script>
+		<script src="networking.js"></script>
+	</head>
+	<body onload="startup()">
+		<button id="connectButton">
+			Create
+		</button>
+		<button id="joinButton">
+			Join
+		</button>
+		<button id="disconnectButton" disabled>
+			Disconnect
+		</button>
+		<label>Your ID:
+			<input type="number" id="clientId" />
+		</label>
+		<div class="messagebox">
+			<label for="message">Enter a message:
+				<input type="text" name="message" id="message" placeholder="Message text"
+						inputmode="latin" size=60 maxlength=120 disabled>
+			</label>
+			<button id="sendButton" name="sendButton" class="buttonright" disabled>
+				Send
+			</button>
+		</div>
+		<div class="messagebox" id="receivebox">
+			<p>Messages:</p>
+		</div>
+
+
+		<script>
+/**
+ * https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Simple_RTCDataChannel_sample
+ */
+function startup() {
+	connectButton = document.getElementById('connectButton');
+	joinButton = document.getElementById('joinButton');
+	disconnectButton = document.getElementById('disconnectButton');
+	sendButton = document.getElementById('sendButton');
+	messageInputBox = document.getElementById('message');
+	receiveBox = document.getElementById('receivebox');
+	clientIdInputBox = document.getElementById('clientId');
+	clientIdInputBox.value = getClientId();
+
+	// Set event listeners for user interface widgets
+	connectButton.addEventListener('click', connectButtonHandler, false);
+	joinButton.addEventListener('click', joinButtonHandler, false);
+	disconnectButton.addEventListener('click', disconnectPeers, false);
+	sendButton.addEventListener('click', sendButtonHandler, false);
+	clientIdInputBox.onblur = (e) => setClientId(e.target.value);
+}
+function connectButtonHandler() {
+	const clientId = clientIdInputBox.value;
+	disableUI();
+	networking.hostConnection(clientId, handleReceiveMessage)
+		.then(() => connectedUI());
+}
+function joinButtonHandler() {
+	const clientId = clientIdInputBox.value;
+	disableUI();
+	networking.joinAHost(clientId, handleReceiveMessage)
+		.then(() => connectedUI());
+}
+function disableUI() {
+	connectButton.disabled = true;
+	joinButton.disabled = true;
+	disconnectButton.disabled = true;
+	clientIdInputBox.disabled = true;
+	messageInputBox.disabled = true;
+	sendButton.disabled = true;
+}
+function connectedUI() {
+	messageInputBox.disabled = false;
+	messageInputBox.focus();
+	sendButton.disabled = false;
+	disconnectButton.disabled = false;
+	connectButton.disabled = true;
+	joinButton.disabled = true;
+	clientIdInputBox.disabled = true;
+	messageInputBox.value = "";
+}
+function disconnectedUI() {
+	connectButton.disabled = false;
+	joinButton.disabled = false;
+	disconnectButton.disabled = true;
+	clientIdInputBox.disabled = false;
+	messageInputBox.disabled = true;
+	sendButton.disabled = true;
+}
+function disconnectPeers() {
+	networking.disconnect();
+	disconnectedUI();
+}
+function sendButtonHandler() {
+	const message = messageInputBox.value;
+	networking.sendJavascriptObject({msg: message});
+	appendMessageToRecieveBox('You: ' + message);
+
+	messageInputBox.value = "";
+	messageInputBox.focus();
+}
+function handleReceiveMessage(obj) {
+	console.log('recieve channel onmessage', obj);
+	appendMessageToRecieveBox(obj.msg);
+}
+function appendMessageToRecieveBox(message) {
+	var el = document.createElement("p");
+	var txtNode = document.createTextNode(message);
+
+	el.appendChild(txtNode);
+	receiveBox.appendChild(el);
+}
+/**
+ * Get the client's ID from the URL or local storage
+ */
+function getClientId() {
+	var clientId = parseInt(window.location.hash.substr(1));
+	if (!clientId) {
+		clientId = localStorage.getItem('clientId');
+	}
+	if (!clientId) {
+		//5-digit random number
+		clientId =  Math.floor(Math.random() * 10e4);
+	}
+	setClientId(clientId);
+	return clientId;
+}
+/**
+ * Update the client's ID in the URL and local storage
+ */
+function setClientId(clientId) {
+	localStorage.setItem('clientId', clientId);
+	window.location.hash = clientId;
+}
+		</script>
+	</body>
+</html>
