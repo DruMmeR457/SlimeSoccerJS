@@ -9,6 +9,8 @@ canvas
     background-color: #f1f1f1;
 }
 </style>
+  <!-- Rollbar.com -->
+  <script src="rollbar.js"></script>
   <!--
   WebRTC shim
     https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/adapter.js
@@ -18,33 +20,45 @@ canvas
   <script src="networking.js"></script>
 </head>
 <body>
-  <button id="host">Host</button>
-  <button id="join">Join</button>
+  <button id="local">Local Play</button>
+  <button id="host">Host game</button>
+  <button id="join">Join hosted game</button>
 <script>
 
 var redSlime, blueSlime, soccerBall, leftScore = 0, rightScore = 0,
 	leftInitX = 90, leftInitY = 0, rightInitX = 390, rightInitY = 0,
 	ballInitX = 240, ballInitY = 150, leftTimeout = 0, rightTimeout = 0,
-  isHost = null, joinerKeysPressed = {};
+	isHost = null, isLocal = false, joinerKeysPressed = {};
 
 /**
- * Set up "Host" & "Join" buttons
+ * Set up "Local", "Host", & "Join" buttons
  */
-function setupHostJoinButtons() {
+function setupButtons() {
+  var localButton = document.getElementById('local');
   var hostButton = document.getElementById('host');
   var joinButton = document.getElementById('join');
-  hostButton.addEventListener('click', function (e) {
-    hostGame();
+  function removeButtons() {
+    localButton.remove();
     hostButton.remove();
     joinButton.remove();
+  }
+  localButton.addEventListener('click', function (e) {
+    isLocal = true;
+    startGame();
+    removeButtons();
+    draw();
+    setInterval(() => {move(); draw();}, 17);
+  });
+  hostButton.addEventListener('click', function (e) {
+    hostGame();
+    removeButtons();
   });
   joinButton.addEventListener('click', function (e) {
     joinGame();
-    hostButton.remove();
-    joinButton.remove();
+    removeButtons();
   });
 }
-setupHostJoinButtons();
+setupButtons();
 /**
  * Starts hosting a game
  */
@@ -326,9 +340,14 @@ function handleKeys() {
   if (myGameArea.keys && myGameArea.keys[65]) {redMoveLeft(); }  	//'a'
   if (myGameArea.keys && myGameArea.keys[68]) {redMoveRight(); }	//'d'
   if (myGameArea.keys && myGameArea.keys[87]) {redJump(); }  		//'w'
-  if (joinerKeysPressed && joinerKeysPressed[37]) {blueMoveLeft(); } 	//left-arrow
-  if (joinerKeysPressed && joinerKeysPressed[39]) {blueMoveRight(); }	//right-arrow
-  if (joinerKeysPressed && joinerKeysPressed[38]) {blueJump(); } 		//up-arrow
+  if (isLocal) {
+	  player2Keys = myGameArea.keys;
+  } else {
+	  player2Keys = joinerKeysPressed;
+  }
+  if (player2Keys && player2Keys[37]) {blueMoveLeft(); } 	//left-arrow
+  if (player2Keys && player2Keys[39]) {blueMoveRight(); }	//right-arrow
+  if (player2Keys && player2Keys[38]) {blueJump(); } 		//up-arrow
 }
 function move() {
   redStopMove();
